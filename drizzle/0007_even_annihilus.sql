@@ -1,0 +1,1 @@
+DROP TABLE "phone_rate_limits" CASCADE;

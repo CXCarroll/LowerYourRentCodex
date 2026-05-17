@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: loweryourrent-postgres
+    environment:
+      POSTGRES_USER: lower
+      POSTGRES_PASSWORD: lower
+      POSTGRES_DB: loweryourrent
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lower -d loweryourrent']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

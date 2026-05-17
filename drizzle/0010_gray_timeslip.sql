@@ -1,0 +1,2 @@
+CREATE TYPE "public"."email_template_aggressiveness" AS ENUM('baseline', 'more_aggressive', 'very_aggressive');--> statement-breakpoint
+ALTER TABLE "email_templates" ADD COLUMN "aggressiveness" "email_template_aggressiveness" DEFAULT 'baseline' NOT NULL;

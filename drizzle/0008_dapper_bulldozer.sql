@@ -1,0 +1,2 @@
+CREATE TYPE "public"."email_template_audience" AS ENUM('any', 'above_median', 'below_median');--> statement-breakpoint
+ALTER TABLE "email_templates" ADD COLUMN "audience" "email_template_audience" DEFAULT 'any' NOT NULL;
