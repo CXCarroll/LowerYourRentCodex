@@ -225,8 +225,9 @@ export const emailTemplates = pgTable(
 // negotiation emails are generated. The code is stored only as
 // sha256(EMAIL_PEPPER + id + code) — never plaintext — and the row id is mixed
 // in so two rows with the same code produce different hashes (no cross-row
-// replay). Rows past `expires_at` are swept opportunistically; `email_hash`
-// powers per-email send rate limiting.
+// replay). Rows are reaped once they age past the rate-limit window — the `ip`
+// they hold is PII, so retention is bounded; `email_hash` powers per-email
+// send rate limiting.
 export const emailVerifications = pgTable(
 	'email_verifications',
 	{

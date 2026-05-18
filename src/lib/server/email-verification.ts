@@ -23,6 +23,12 @@ export const CODE_TTL_MS = 10 * 60 * 1000; // codes expire after 10 minutes
 export const MAX_ATTEMPTS = 5; // wrong-code guesses per code before lockout
 const SEND_LIMIT_PER_EMAIL_HOUR = 5; // codes requestable per email per hour
 const SEND_LIMIT_PER_IP_HOUR = 15; // codes requestable per IP per hour
+// Rolling window for the send caps above. Rows are retained exactly this long:
+// a verification row — and the raw IP it holds — is purged once it ages past
+// it, so IP retention is bounded rather than left to chance.
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+// Cadence of the background reaper that sweeps aged-out rows.
+const REAP_INTERVAL_MS = 15 * 60 * 1000;
 
 // Fallback pepper for local dev only — production MUST set EMAIL_PEPPER.
 const DEV_PEPPER = 'dev-email-pepper-do-not-use-in-production';
@@ -51,7 +57,7 @@ export async function requestCode(email: string, ip: string): Promise<RequestCod
 	if (!db) return { ok: false, reason: 'unavailable' };
 
 	const emailHash = hashEmail(email);
-	const since = new Date(Date.now() - 60 * 60 * 1000);
+	const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
 
 	const [byEmail] = await db
 		.select({ n: count() })
@@ -139,12 +145,34 @@ export async function verifyCode(email: string, code: string): Promise<VerifyCod
 	return { ok: true };
 }
 
-/** Opportunistic cleanup of expired codes. Call from a rarely-taken path. */
+/**
+ * Purge email_verifications rows — and the raw IPs they hold — once they age
+ * past the rate-limit window. Runs both opportunistically (from
+ * /api/verify/send) and on a fixed interval (see startVerificationReaper), so
+ * IPs are never retained longer than the rate limiter actually needs them.
+ */
 export async function reapExpiredVerifications(): Promise<number> {
 	if (!db) return 0;
+	const cutoff = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
 	const result = await db
 		.delete(emailVerifications)
-		.where(lt(emailVerifications.expiresAt, new Date()))
+		.where(lt(emailVerifications.createdAt, cutoff))
 		.returning({ id: emailVerifications.id });
 	return result.length;
+}
+
+let reaperStarted = false;
+
+/**
+ * Start the background reaper so aged-out verification rows (and their IPs) are
+ * purged even when traffic is too low to trigger the opportunistic sweep.
+ * Idempotent; the timer is unref'd so it never holds the process open.
+ */
+export function startVerificationReaper(): void {
+	if (reaperStarted) return;
+	reaperStarted = true;
+	const timer = setInterval(() => {
+		reapExpiredVerifications().catch(() => {});
+	}, REAP_INTERVAL_MS);
+	timer.unref?.();
 }
