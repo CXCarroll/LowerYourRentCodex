@@ -8,6 +8,9 @@ import {
 	isAudience,
 	sampleValuesForAudience,
 	tierProposal,
+	roundDownToNice,
+	supplyContextSentence,
+	MIN_UNITS_FOR_SUPPLY_LINE,
 	AUDIENCE_VALUES,
 	AGGRESSIVENESS_VALUES,
 	AGGRESSIVENESS_REDUCTION_FRACTION,
@@ -38,6 +41,67 @@ describe('renderTemplate', () => {
 
 	test('does not touch single-bracket literals', () => {
 		expect(renderTemplate('Hi [Landlord name],', {})).toBe('Hi [Landlord name],');
+	});
+
+	test('collapses the blank gap left by an empty placeholder paragraph', () => {
+		const body = 'Above paragraph.\n\n{{supply_context}}\n\nBelow paragraph.';
+		expect(renderTemplate(body, { supply_context: '' })).toBe(
+			'Above paragraph.\n\nBelow paragraph.'
+		);
+	});
+
+	test('keeps the paragraph when the placeholder resolves to content', () => {
+		const body = 'Above.\n\n{{supply_context}}\n\nBelow.';
+		expect(renderTemplate(body, { supply_context: 'New supply.' })).toBe(
+			'Above.\n\nNew supply.\n\nBelow.'
+		);
+	});
+
+	test('trims leading and trailing whitespace', () => {
+		expect(renderTemplate('\n\nHello\n\n', {})).toBe('Hello');
+	});
+});
+
+describe('roundDownToNice', () => {
+	test('rounds down to the nearest 500 below 10,000', () => {
+		expect(roundDownToNice(5247)).toBe(5000);
+		expect(roundDownToNice(5999)).toBe(5500);
+	});
+
+	test('rounds down to the nearest 1,000 at or above 10,000', () => {
+		expect(roundDownToNice(12480)).toBe(12000);
+		expect(roundDownToNice(10999)).toBe(10000);
+	});
+});
+
+describe('supplyContextSentence', () => {
+	test('composes a sentence with a rounded-down count and year range', () => {
+		const s = supplyContextSentence(5247, 2019, 2023);
+		expect(s).toContain('over 5,000 new apartment units');
+		expect(s).toContain('between 2019 and 2023');
+	});
+
+	test('rounds the count down so "over {n}" is a conservative lower bound', () => {
+		expect(supplyContextSentence(5999, 2019, 2023)).toContain('over 5,500');
+	});
+
+	test('uses singular wording for a single-year span', () => {
+		const s = supplyContextSentence(12480, 2023, 2023);
+		expect(s).toContain('in 2023');
+		expect(s).not.toContain('between');
+	});
+
+	test('returns empty when the count is below the meaningful threshold', () => {
+		expect(supplyContextSentence(MIN_UNITS_FOR_SUPPLY_LINE - 1, 2019, 2023)).toBe('');
+	});
+
+	test('returns empty when there is no permit data', () => {
+		expect(supplyContextSentence(null, null, null)).toBe('');
+		expect(supplyContextSentence(8000, null, 2023)).toBe('');
+	});
+
+	test('is a recognized catalog placeholder', () => {
+		expect(findUnknownPlaceholders('{{supply_context}}')).toEqual([]);
 	});
 });
 

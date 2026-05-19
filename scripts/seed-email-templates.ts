@@ -29,6 +29,8 @@ I hope you're doing well. My lease at {{address}} is up for renewal soon, and I 
 
 After reviewing local data — including HUD Fair Market Rent figures and the American Community Survey's median rent for comparable {{apt_type}} units in this ZIP — my current rent of {{current_rent}} appears to be about {{pct_above_median}}% {{median_direction}} the neighborhood median of {{median_rent}}.
 
+{{supply_context}}
+
 I'd like to propose renewing at {{proposed_rent}}/month. I've been a reliable tenant, always paid on time, and I'd prefer to renew rather than move. If that's not workable, I could make {{fallback_rent}} work on a 12-month renewal.
 
 Happy to hop on a quick call. Thanks for considering.
@@ -45,6 +47,8 @@ I hope you're doing well. My lease at {{address}} is coming up for renewal, and 
 
 After reviewing local data — including HUD Fair Market Rent figures and the American Community Survey's median rent for comparable {{apt_type}} units in this ZIP — my current rent of {{current_rent}} appears to be about {{pct_above_median}}% {{median_direction}} the neighborhood median of {{median_rent}}. Several comparable units in the area are available in that range, and I'm actively weighing my options.
 
+{{supply_context}}
+
 I'd like to stay — I've been a consistent, on-time tenant and I value the stability of not having to move. But I also can't responsibly renew at a rate this far above market. I'd like to propose renewing at {{proposed_rent}}/month. If that's not workable, I could stretch to {{fallback_rent}} on a 12-month term, but at the current rate I'll need to start looking elsewhere.
 
 Happy to hop on a quick call to talk it through. I'd rather work something out than have to move, so I hope we can find a number that works for both of us.
@@ -60,6 +64,8 @@ Happy to hop on a quick call to talk it through. I'd rather work something out t
 I hope you're doing well. I wanted to reach out as my lease at {{address}} approaches renewal — I've begun planning a move, but wanted to have an honest conversation before finalizing anything, because staying is still an option if the numbers make sense.
 
 After reviewing local data — including HUD Fair Market Rent figures and the American Community Survey's median rent for comparable {{apt_type}} units in this ZIP — my current rent of {{current_rent}} is approximately {{pct_above_median}}% {{median_direction}} the neighborhood median of {{median_rent}}. That gap is the main driver behind my decision to start exploring other options.
+
+{{supply_context}}
 
 I know that turning over a unit comes with real costs — vacancy loss, listing fees, cleaning, and the time it takes to find and vet a new tenant. By some estimates, that can run a landlord the equivalent of one to two months' rent. A modest reduction for a reliable, proven tenant is often the better deal for both sides.
 
@@ -78,6 +84,8 @@ Let me know if you'd like to talk through it.
 I hope you're doing well. My lease at {{address}} is up for renewal soon, and I wanted to reach out early to talk through the renewal rate.
 
 I recognize that my current rent of {{current_rent}} sits about {{pct_above_median}}% {{median_direction}} the neighborhood median of {{median_rent}} for comparable {{apt_type}} units, so I understand some adjustment may be on the table. My hope is simply that any increase stays modest and gradual.
+
+{{supply_context}}
 
 I've been a reliable tenant — always paid on time, taken care of the unit, and I'd genuinely like to stay. Turning over a unit isn't free: vacancy loss, listing fees, cleaning, and the time to screen a new tenant can add up to one to two months' rent. A measured renewal keeps a proven, low-risk tenant in place and avoids all of that.
 

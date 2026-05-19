@@ -22,6 +22,7 @@ import {
 	compareToMedian,
 	formatDollars,
 	renderTemplate,
+	supplyContextSentence,
 	tierProposal,
 	type NegotiationVersion
 } from '$lib/shared/email-template';
@@ -33,6 +34,8 @@ export const DEFAULT_TEMPLATE_BODY = `Hi [Landlord name],
 I hope you're doing well. My lease at {{address}} is up for renewal soon, and I wanted to open a conversation about the renewal rate.
 
 After reviewing local data — including HUD Fair Market Rent figures and the American Community Survey's median rent for comparable {{apt_type}} units in this ZIP — my current rent of {{current_rent}} appears to be about {{pct_above_median}}% {{median_direction}} the neighborhood median of {{median_rent}}.
+
+{{supply_context}}
 
 I'd like to propose renewing at {{proposed_rent}}/month. I've been a reliable tenant, always paid on time, and I'd prefer to renew rather than move. If that's not workable, I could make {{fallback_rent}} work on a 12-month renewal.
 
@@ -47,9 +50,8 @@ interface BuildInput {
 	rent: string;
 }
 
-// Demo fallbacks used per-variable when real data is unavailable for a metro.
+// Demo fallback used when real vacancy data is unavailable for a metro.
 const FALLBACK_VACANCY_PCT = 6.0;
-const FALLBACK_UNITS_5YR = 8000;
 
 /** Round a cents amount to the nearest whole $100, mirroring the legacy math. */
 function roundTo100(cents: number): number {
@@ -73,7 +75,12 @@ export async function buildNegotiationEmail(
 	let medianCents = roundTo100(currentCents * 0.91);
 	let vacancyPct = FALLBACK_VACANCY_PCT;
 	let fmrCents = roundTo100(currentCents * 0.95);
-	let units5yr = FALLBACK_UNITS_5YR;
+	// Real metro construction figures — left null when the address doesn't
+	// resolve to a metro with permit data, so the email omits the supply line
+	// rather than printing a fabricated number.
+	let units5yr: number | null = null;
+	let permitsFirstYear: number | null = null;
+	let permitsLastYear: number | null = null;
 
 	try {
 		zip = await geocodeAddressToZip(address, fetchFn);
@@ -89,9 +96,10 @@ export async function buildNegotiationEmail(
 				const fmr = insight.hudFmrCentsByAptType[aptType];
 				if (fmr != null) fmrCents = fmr;
 				if (insight.permitsHistory.length > 0) {
-					units5yr = insight.permitsHistory
-						.slice(-5)
-						.reduce((sum, p) => sum + p.units5plus, 0);
+					const recent = insight.permitsHistory.slice(-5);
+					units5yr = recent.reduce((sum, p) => sum + p.units5plus, 0);
+					permitsFirstYear = recent[0].year;
+					permitsLastYear = recent[recent.length - 1].year;
 				}
 
 				// Data-driven proposal: percentile distribution of recent
@@ -136,7 +144,8 @@ export async function buildNegotiationEmail(
 		pct_above_median: String(pctAboveMedian),
 		median_direction: medianDirection,
 		vacancy_rate: vacancyPct.toFixed(1),
-		units_built_5yr: Math.round(units5yr).toLocaleString('en-US'),
+		units_built_5yr: units5yr != null ? units5yr.toLocaleString('en-US') : '',
+		supply_context: supplyContextSentence(units5yr, permitsFirstYear, permitsLastYear),
 		fmr: formatDollars(fmrCents)
 	};
 

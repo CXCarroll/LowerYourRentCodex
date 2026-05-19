@@ -87,8 +87,17 @@ export const VARIABLE_CATALOG: TemplateVariable[] = [
 	{
 		key: 'units_built_5yr',
 		label: 'Units built (5 yr)',
-		description: 'Multifamily (5+ unit) permits in the metro over the last 5 years.',
+		description:
+			'Raw count of new multifamily (5+ unit) apartments built in the metro over the last 5 years. Empty when the metro has no data — prefer {{supply_context}} for a guarded, ready-made sentence.',
 		sample: '12,400'
+	},
+	{
+		key: 'supply_context',
+		label: 'New-supply sentence',
+		description:
+			'Ready-made sentence about recent apartment construction in the metro. Empty when the metro has too little new supply to help the tenant, so it can sit on its own paragraph and vanish cleanly.',
+		sample:
+			'Public housing data also shows that over 12,000 new apartment units have been built across this metro area between 2019 and 2023 — a meaningful addition to local rental supply that gives tenants more options.'
 	},
 	{
 		key: 'fmr',
@@ -110,12 +119,17 @@ const PLACEHOLDER_RE = /\{\{\s*([a-z0-9_]+)\s*\}\}/gi;
  * Replace every {{key}} in `body` with `values[key]`. Unknown keys (no entry
  * in `values`) are left intact so a misspelled placeholder is visible rather
  * than silently dropped.
+ *
+ * Blank-line runs of 3+ newlines are collapsed to a single blank line, so a
+ * placeholder that resolves to '' (e.g. {{supply_context}} for a metro with no
+ * data) can sit on its own paragraph and disappear without leaving a gap.
  */
 export function renderTemplate(body: string, values: Record<string, string>): string {
-	return body.replace(PLACEHOLDER_RE, (match, rawKey: string) => {
+	const rendered = body.replace(PLACEHOLDER_RE, (match, rawKey: string) => {
 		const key = rawKey.toLowerCase();
 		return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : match;
 	});
+	return rendered.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** Distinct {{placeholders}} in `body` that are not in the catalog. */
@@ -278,4 +292,48 @@ export function compareToMedian(
 	if (medianCents <= 0) return { pct: 0, direction: 'above' };
 	const pctSigned = Math.round(((currentCents - medianCents) / medianCents) * 100);
 	return { pct: Math.abs(pctSigned), direction: pctSigned < 0 ? 'below' : 'above' };
+}
+
+// ── New-supply context ─────────────────────────────────────────────────────
+// A negotiation point: lots of recent apartment construction signals a
+// softening market. The figure comes from the Census Building Permits Survey
+// (5+ unit permits, summed over the metro's last ~5 years).
+
+/**
+ * Minimum 5-year 5+-unit count for the supply line to appear. Below this a
+ * metro's recent construction is too thin to help the tenant — and a small
+ * number arguably signals *tight* supply, which would undercut their case.
+ */
+export const MIN_UNITS_FOR_SUPPLY_LINE = 1000;
+
+/**
+ * Round `n` *down* to a clean figure — nearest 500 below 10,000, nearest 1,000
+ * at or above. Rounding down keeps "over {n}" a true lower bound on the real
+ * count, so the claim is always conservative.
+ */
+export function roundDownToNice(n: number): number {
+	if (n < 10000) return Math.floor(n / 500) * 500;
+	return Math.floor(n / 1000) * 1000;
+}
+
+/**
+ * Pre-composed "new supply" sentence for the negotiation email. Returns a
+ * complete sentence when the metro has a meaningful amount of recent
+ * multifamily construction, or '' when data is missing or too thin to help the
+ * tenant. The count is rounded down so "over {n}" is always conservative, and
+ * the actual year range is cited so the claim is verifiable.
+ */
+export function supplyContextSentence(
+	units5plus: number | null,
+	firstYear: number | null,
+	lastYear: number | null
+): string {
+	if (units5plus == null || firstYear == null || lastYear == null) return '';
+	if (units5plus < MIN_UNITS_FOR_SUPPLY_LINE) return '';
+	const rounded = roundDownToNice(units5plus);
+	if (rounded < MIN_UNITS_FOR_SUPPLY_LINE) return '';
+	const count = rounded.toLocaleString('en-US');
+	const span =
+		firstYear === lastYear ? `in ${firstYear}` : `between ${firstYear} and ${lastYear}`;
+	return `Public housing data also shows that over ${count} new apartment units have been built across this metro area ${span} — a meaningful addition to local rental supply that gives tenants more options.`;
 }
