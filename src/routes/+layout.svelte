@@ -1,6 +1,5 @@
 <script lang="ts">
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { fly } from 'svelte/transition';
@@ -76,11 +75,36 @@
 		const t = TABS.find((x) => x.value === v);
 		if (t && t.value !== activeTab) goto(t.href);
 	}
+
+	// Share-preview metadata (Open Graph + Twitter Card). URLs are absolute
+	// and built from the current request's origin so they work on any host —
+	// production, Railway preview deploys, localhost — without an env var.
+	// Image is the apple-touch-icon as a placeholder; replace with /og.png
+	// (1200×630) and flip twitter:card to summary_large_image once designed.
+	const OG_TITLE = 'Lower Your Rent';
+	const OG_DESCRIPTION =
+		'Negotiate a better rent in under two minutes, backed by real market data.';
+	let canonicalUrl = $derived(page.url.origin + page.url.pathname);
+	let ogImage = $derived(page.url.origin + '/apple-touch-icon.png');
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
 	<title>Lower Your Rent</title>
+
+	<link rel="canonical" href={canonicalUrl} />
+
+	<meta property="og:type" content="website" />
+	<meta property="og:site_name" content="Lower Your Rent" />
+	<meta property="og:title" content={OG_TITLE} />
+	<meta property="og:description" content={OG_DESCRIPTION} />
+	<meta property="og:url" content={canonicalUrl} />
+	<meta property="og:image" content={ogImage} />
+	<meta property="og:locale" content="en_US" />
+
+	<meta name="twitter:card" content="summary" />
+	<meta name="twitter:title" content={OG_TITLE} />
+	<meta name="twitter:description" content={OG_DESCRIPTION} />
+	<meta name="twitter:image" content={ogImage} />
 </svelte:head>
 
 {#if isAdmin}
