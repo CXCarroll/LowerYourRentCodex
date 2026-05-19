@@ -33,6 +33,10 @@ const REAP_INTERVAL_MS = 15 * 60 * 1000;
 // Fallback pepper for local dev only — production MUST set EMAIL_PEPPER.
 const DEV_PEPPER = 'dev-email-pepper-do-not-use-in-production';
 
+// Fixed verification code used when DEMO_MODE is on — the negotiate flow then
+// needs no email delivery. See env.ts DEMO_MODE.
+const DEMO_CODE = '123456';
+
 function pepper(): string {
 	return env.EMAIL_PEPPER ?? DEV_PEPPER;
 }
@@ -76,7 +80,7 @@ export async function requestCode(email: string, ip: string): Promise<RequestCod
 	}
 
 	const id = randomUUID();
-	const code = generateCode();
+	const code = env.DEMO_MODE ? DEMO_CODE : generateCode();
 	await db.insert(emailVerifications).values({
 		id,
 		emailHash,

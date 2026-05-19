@@ -13,9 +13,9 @@ const schema = z.object({
 		.transform((v) => (v && v.length > 0 ? v : undefined)),
 	// Cloudflare Turnstile secret key. Optional in dev: when unset OR blank the
 	// bot check is disabled (local dev / template mode). REQUIRED in production
-	// — the public form would otherwise have no bot protection (see the boot
-	// guard in load()). A blank `TURNSTILE_SECRET_KEY=` in .env parses as '' —
-	// coerce that to undefined so it's treated as unset.
+	// unless DEMO_MODE is set — the public form would otherwise have no bot
+	// protection (see the boot guard in load()). A blank `TURNSTILE_SECRET_KEY=`
+	// in .env parses as '' — coerce that to undefined so it's treated as unset.
 	TURNSTILE_SECRET_KEY: z
 		.string()
 		.optional()
@@ -31,8 +31,8 @@ const schema = z.object({
 	// Resend API key for sending verification-code emails. Optional in dev: when
 	// unset OR blank the code is printed to the server console instead of
 	// emailed, so local dev works without a Resend account. REQUIRED in
-	// production (see the boot guard in load()). A blank `RESEND_API_KEY=`
-	// parses as '' — coerce that to undefined so it reads as unset.
+	// production unless DEMO_MODE is set (see the boot guard in load()). A blank
+	// `RESEND_API_KEY=` parses as '' — coerce that to undefined so it reads as unset.
 	RESEND_API_KEY: z
 		.string()
 		.optional()
@@ -40,7 +40,7 @@ const schema = z.object({
 	// From address for verification emails, e.g. `Lower Your Rent <verify@…>`.
 	// The domain must be verified in Resend or sends fail. Console-log fallback
 	// kicks in when either this or RESEND_API_KEY is unset; REQUIRED in
-	// production (see the boot guard in load()).
+	// production unless DEMO_MODE is set (see the boot guard in load()).
 	EMAIL_FROM: z
 		.string()
 		.optional()
@@ -60,6 +60,16 @@ const schema = z.object({
 		.string()
 		.optional()
 		.transform((v) => v === 'true' || v === '1'),
+	// MVP / demo escape hatch. When `true` the negotiate flow runs with NO
+	// external dependencies: Resend is skipped, the emailed code is the fixed
+	// string "123456", and the Turnstile bot check always passes. Also drops
+	// RESEND_API_KEY / EMAIL_FROM / TURNSTILE_SECRET_KEY from the production
+	// boot requirements. NEVER leave this on for a real launch — any visitor
+	// can verify any email address they don't own.
+	DEMO_MODE: z
+		.string()
+		.optional()
+		.transform((v) => v === 'true' || v === '1'),
 	NODE_ENV: z.enum(['development', 'production', 'test']).default('development')
 });
 
@@ -73,6 +83,7 @@ function load() {
 		EMAIL_FROM: privateEnv.EMAIL_FROM,
 		EMAIL_PEPPER: privateEnv.EMAIL_PEPPER,
 		TRUST_CF_CONNECTING_IP: privateEnv.TRUST_CF_CONNECTING_IP,
+		DEMO_MODE: privateEnv.DEMO_MODE,
 		NODE_ENV: privateEnv.NODE_ENV
 	});
 	if (!parsed.success) {
@@ -93,13 +104,17 @@ function load() {
 	// runs with NODE_ENV=production but has no runtime secrets, so the guard is
 	// a runtime-only check, not a build-time one.
 	if (!building && data.NODE_ENV === 'production') {
-		const required = {
+		// DEMO_MODE makes the negotiate flow run with no external services, so
+		// their keys are no longer boot-required (see DEMO_MODE in the schema).
+		const required: Record<string, unknown> = {
 			DATABASE_URL: data.DATABASE_URL,
-			EMAIL_PEPPER: data.EMAIL_PEPPER,
-			RESEND_API_KEY: data.RESEND_API_KEY,
-			EMAIL_FROM: data.EMAIL_FROM,
-			TURNSTILE_SECRET_KEY: data.TURNSTILE_SECRET_KEY
+			EMAIL_PEPPER: data.EMAIL_PEPPER
 		};
+		if (!data.DEMO_MODE) {
+			required.RESEND_API_KEY = data.RESEND_API_KEY;
+			required.EMAIL_FROM = data.EMAIL_FROM;
+			required.TURNSTILE_SECRET_KEY = data.TURNSTILE_SECRET_KEY;
+		}
 		const missing = Object.entries(required)
 			.filter(([, v]) => !v)
 			.map(([k]) => k);
@@ -108,6 +123,14 @@ function load() {
 				`Refusing to boot: ${missing.join(', ')} must be set when NODE_ENV=production.`
 			);
 		}
+	}
+
+	if (!building && data.DEMO_MODE) {
+		console.warn(
+			'[DEMO_MODE] Negotiate flow has NO external dependencies: Resend skipped, ' +
+				'verification code is the fixed string "123456", Turnstile bypassed. ' +
+				'Do NOT leave this on for a real launch — anyone can verify any email.'
+		);
 	}
 
 	return data;

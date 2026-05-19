@@ -11,6 +11,7 @@ const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 /**
  * Returns `true` if the request may proceed.
  *
+ * - DEMO_MODE on               → `true` (bot check bypassed).
  * - No secret key configured  → `true` (bot check disabled).
  * - Secret key set, no token   → `false` (reject).
  * - Cloudflare transport error/timeout → `true` (fail-open: a CF outage must
@@ -21,6 +22,7 @@ export async function verifyTurnstileToken(
 	ip: string,
 	fetchFn: typeof fetch
 ): Promise<boolean> {
+	if (env.DEMO_MODE) return true; // demo mode — bot check bypassed
 	const secret = env.TURNSTILE_SECRET_KEY;
 	if (!secret) return true; // dev / template mode — check disabled
 	if (!token) return false; // keys set but no token ⇒ reject

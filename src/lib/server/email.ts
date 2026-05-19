@@ -38,6 +38,9 @@ function htmlBody(code: string): string {
  * where the code is console-logged), `false` if a real send failed.
  */
 export async function sendVerificationCode(email: string, code: string): Promise<boolean> {
+	// Demo mode: the code is the fixed "123456" (see email-verification.ts) and
+	// no email is sent — report success so the flow proceeds.
+	if (env.DEMO_MODE) return true;
 	if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
 		// In production, never log the code (PII + code leak) and never report
 		// success — a missing key must surface as an error, not a silent no-op.
