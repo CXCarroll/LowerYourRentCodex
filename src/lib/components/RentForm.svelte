@@ -124,8 +124,9 @@
 	// ─── Post-submit merge ───────────────────────────────────────────────────
 	// On submit, all collapsed-summary rows merge into a single "Edit info"
 	// button so the email field gets more vertical space. Tapping the button
-	// reveals the summary rows again; per UX choice the button does not
-	// re-appear afterwards — it's a one-way trip back to editable mode.
+	// (see editInfo) resets the flow to the editable 'form' phase so a changed
+	// rent/address regenerates the negotiation email; the button reappears
+	// after the next successful verify.
 	let infoMerged = $state(false);
 
 	// ─── Email actions (Copy + Version picker) ───────────────────────────────
@@ -207,6 +208,40 @@ Thanks for considering.
 			if (typingTimer) clearInterval(typingTimer);
 		};
 	});
+
+	// "Edit info" — drop the verified state and the generated email, returning
+	// to the editable 'form' phase. A changed rent/address must go back through
+	// /verify/send → code → /verify/check, which regenerates the negotiation
+	// email server-side; the old email can't be silently rebuilt because the
+	// verification code is single-use.
+	function editInfo() {
+		// Stop the verified-state animations so they don't write a stale body
+		// back into `notes` after the reset.
+		if (typingTimer) {
+			clearInterval(typingTimer);
+			typingTimer = null;
+		}
+		if (swapTimer) {
+			clearTimeout(swapTimer);
+			swapTimer = null;
+		}
+		if (copyTimer) {
+			clearTimeout(copyTimer);
+			copyTimer = null;
+		}
+
+		infoMerged = false;
+		phase = 'form';
+		verified = false;
+		versions = [];
+		activeIndex = 0;
+		notes = '';
+		swapping = false;
+		copied = false;
+		codeError = '';
+		addressError = '';
+		otpResetKey += 1;
+	}
 
 	// A Turnstile token is single-use; once spent, remount the widget so the
 	// next /verify/send call gets a fresh, unconsumed token.
@@ -661,8 +696,10 @@ Thanks for considering.
 	</div>
 
 	<!-- Edit info button — replaces the field stack once the user submits.
-	     Tap to bring the editable summary rows back. One-way trip: once
-	     tapped, the button stays gone for the rest of the session. -->
+	     Tap to bring the editable summary rows back and reset the flow to the
+	     'form' phase (see editInfo): changing rent/address requires re-verifying
+	     so the negotiation email is regenerated. The button reappears after the
+	     next successful verify. -->
 	<div
 		class="grid"
 		style="
@@ -684,7 +721,7 @@ Thanks for considering.
 			<div class="flex flex-col" style="gap: 10px;">
 				<button
 					type="button"
-					onclick={() => (infoMerged = false)}
+					onclick={editInfo}
 					class="w-full flex items-center justify-center cursor-pointer"
 					style="
 						gap: 8px;
