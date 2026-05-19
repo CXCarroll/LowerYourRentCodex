@@ -2,6 +2,8 @@
 // A small per-process bucket to stop obvious abuse; Cloudflare edge rate
 // limiting is the real defense in production.
 
+import { env } from './env';
+
 interface Bucket {
 	tokens: number;
 	refilledAt: number;
@@ -31,10 +33,14 @@ export function consumeIpToken(ip: string): { ok: boolean; retryAfter: number } 
 }
 
 export function getClientIp(request: Request, fallback = 'unknown'): string {
-	// Behind Cloudflare, CF-Connecting-IP holds the true client IP and is set
-	// only by Cloudflare's edge — trust it first. Absent in local dev.
-	const cf = request.headers.get('cf-connecting-ip');
-	if (cf) return cf.trim();
+	// CF-Connecting-IP holds the true client IP only when traffic actually
+	// transits Cloudflare's edge. Trust it solely when the deployment opts in
+	// (TRUST_CF_CONNECTING_IP) — otherwise a client could forge the header to
+	// rotate IPs and slip past rate limits.
+	if (env.TRUST_CF_CONNECTING_IP) {
+		const cf = request.headers.get('cf-connecting-ip');
+		if (cf) return cf.trim();
+	}
 	// Otherwise trust only the rightmost X-Forwarded-For entry (set by our own proxy).
 	const xff = request.headers.get('x-forwarded-for');
 	if (xff) {

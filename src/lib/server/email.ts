@@ -1,9 +1,11 @@
 // Verification-code email delivery via Resend.
 //
-// Dev / template mode: when RESEND_API_KEY or EMAIL_FROM is unset, the code is
-// printed to the server console instead of sent — mirrors how turnstile.ts and
-// mapbox.ts no-op without keys, so the negotiate flow works locally with no
-// Resend account.
+// Dev / template mode: when RESEND_API_KEY or EMAIL_FROM is unset in a
+// non-production environment, the code is printed to the server console
+// instead of sent — mirrors how turnstile.ts and mapbox.ts no-op without keys,
+// so the negotiate flow works locally with no Resend account. In production,
+// missing keys are a hard failure: the code is never logged and the caller
+// surfaces an error, so the misconfiguration is loud rather than silent.
 //
 // Unlike Turnstile, this does NOT fail open on a real send failure: a silently
 // dropped code dead-ends the flow with no way forward, so the caller surfaces
@@ -36,7 +38,16 @@ function htmlBody(code: string): string {
  * where the code is console-logged), `false` if a real send failed.
  */
 export async function sendVerificationCode(email: string, code: string): Promise<boolean> {
+	// Demo mode: the code is the fixed "123456" (see email-verification.ts) and
+	// no email is sent — report success so the flow proceeds.
+	if (env.DEMO_MODE) return true;
 	if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
+		// In production, never log the code (PII + code leak) and never report
+		// success — a missing key must surface as an error, not a silent no-op.
+		if (env.NODE_ENV === 'production') {
+			console.error('[email] RESEND_API_KEY / EMAIL_FROM not configured — cannot send code.');
+			return false;
+		}
 		console.log(`[email] verification code for ${email}: ${code}`);
 		return true;
 	}

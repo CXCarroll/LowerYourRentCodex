@@ -1,5 +1,23 @@
-import { redirect, type Handle } from '@sveltejs/kit';
+import { redirect, type Handle, type ServerInit } from '@sveltejs/kit';
 import { isAdminConfigured, loadAdminSession } from '$lib/server/admin/auth';
+import { startVerificationReaper } from '$lib/server/email-verification';
+import { env } from '$lib/server/env';
+
+export const init: ServerInit = () => {
+	startVerificationReaper();
+};
+
+// Baseline security headers applied to every response. CSP is handled
+// separately by SvelteKit (see kit.csp in svelte.config.js) so its inline
+// scripts get the right nonces.
+function applySecurityHeaders(response: Response): void {
+	response.headers.set('X-Content-Type-Options', 'nosniff');
+	response.headers.set('X-Frame-Options', 'DENY');
+	response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+	if (env.NODE_ENV === 'production') {
+		response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+	}
+}
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.admin = null;
@@ -7,7 +25,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const isAdminPath = path === '/admin' || path.startsWith('/admin/');
 
 	if (!isAdminPath) {
-		return resolve(event);
+		const response = await resolve(event);
+		applySecurityHeaders(response);
+		return response;
 	}
 
 	// Admin disabled until the operator sets ADMIN_PASSWORD_HASH.
@@ -29,6 +49,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	const response = await resolve(event);
+	applySecurityHeaders(response);
 	// Don't cache anything under /admin; don't let search engines index it.
 	response.headers.set('Cache-Control', 'no-store, private');
 	response.headers.set('X-Robots-Tag', 'noindex, nofollow');
