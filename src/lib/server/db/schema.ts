@@ -39,6 +39,25 @@ export const submissions = pgTable(
 	]
 );
 
+// Atomic dedupe gate for anonymous submissions. The key is scoped to one
+// building, one apartment/unit when supplied, and one apartment-size bucket.
+export const submissionDedupeKeys = pgTable(
+	'submission_dedupe_keys',
+	{
+		dedupeHash: text('dedupe_hash').primaryKey(),
+		addressHash: text('address_hash').notNull(),
+		unitHash: text('unit_hash'),
+		aptType: aptType('apt_type').notNull(),
+		expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
+	},
+	(t) => [
+		index('submission_dedupe_keys_expires_idx').on(t.expiresAt),
+		index('submission_dedupe_keys_addr_apt_idx').on(t.addressHash, t.aptType)
+	]
+);
+
 // Seed tables (populated by scripts/seed-*.ts in Phase 2).
 
 export const hudFmr = pgTable(
@@ -319,6 +338,8 @@ export const verifiedEmails = pgTable('verified_emails', {
 export type AptTypeDb = (typeof aptType.enumValues)[number];
 export type Submission = typeof submissions.$inferSelect;
 export type NewSubmission = typeof submissions.$inferInsert;
+export type SubmissionDedupeKey = typeof submissionDedupeKeys.$inferSelect;
+export type NewSubmissionDedupeKey = typeof submissionDedupeKeys.$inferInsert;
 export type AdminSession = typeof adminSessions.$inferSelect;
 export type AdminUpload = typeof adminUploads.$inferSelect;
 export type RateLimitBucket = typeof rateLimitBuckets.$inferSelect;

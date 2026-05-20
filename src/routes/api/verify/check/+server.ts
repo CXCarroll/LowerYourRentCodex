@@ -151,6 +151,7 @@ export const POST: RequestHandler = async (event) => {
 			await insertSubmissionUnlessRecentDuplicateTx(tx, {
 				buildingAddress: normalized.building,
 				addressHash: normalized.addressHash,
+				unitHash: normalized.unitHash,
 				zip: zipInfo.zip,
 				countyFips: zipInfo.countyFips,
 				cbsaCode: zipInfo.cbsaCode,

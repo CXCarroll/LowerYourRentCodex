@@ -7,6 +7,7 @@ describe('normalizeBuildingAddress', () => {
 		expect(n.zip).toBe('11201');
 		expect(n.building).not.toMatch(/apt|4b/i);
 		expect(n.building).toMatch(/\bNY\b/);
+		expect(n.unitHash).toBeTruthy();
 	});
 
 	test('strips "Unit 12"', () => {
@@ -50,6 +51,24 @@ describe('normalizeBuildingAddress', () => {
 		const a = normalizeBuildingAddress('123 Main St, Apt 1, Brooklyn, NY 11201');
 		const b = normalizeBuildingAddress('123 Main St, Apt 22, Brooklyn, NY 11201');
 		expect(a.addressHash).toBe(b.addressHash);
+		expect(a.unitHash).not.toBe(b.unitHash);
+	});
+
+	test('same unit hashes identically across common unit labels', () => {
+		const a = normalizeBuildingAddress('123 Main St Apt 4B, Brooklyn, NY 11201');
+		const b = normalizeBuildingAddress('123 Main St Apartment 4B, Brooklyn, NY 11201');
+		const c = normalizeBuildingAddress('123 Main St #4B, Brooklyn, NY 11201');
+
+		expect(a.addressHash).toBe(b.addressHash);
+		expect(a.addressHash).toBe(c.addressHash);
+		expect(a.unitHash).toBeTruthy();
+		expect(a.unitHash).toBe(b.unitHash);
+		expect(a.unitHash).toBe(c.unitHash);
+	});
+
+	test('omits unit hash when no unit is present', () => {
+		const n = normalizeBuildingAddress('123 Main St, Brooklyn, NY 11201');
+		expect(n.unitHash).toBeNull();
 	});
 
 	test('falls back gracefully on malformed input', () => {

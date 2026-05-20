@@ -177,6 +177,7 @@ describe('/api/verify/check', () => {
 			tx,
 			expect.objectContaining({
 				buildingAddress: expect.stringContaining('123 Main'),
+				unitHash: expect.any(String),
 				zip: '11201',
 				countyFips: '36047',
 				cbsaCode: '35620',
