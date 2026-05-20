@@ -416,7 +416,7 @@ Thanks for considering.
 				if (res.status === 401) codeError = "That code isn't right — try again.";
 				else if (res.status === 410) codeError = 'That code expired — request a new one.';
 				else if (res.status === 429) codeError = 'Too many tries — request a new code.';
-				else codeError = 'Something went wrong — request a new code.';
+				else codeError = 'Something went wrong — try that code again.';
 				return;
 			}
 

@@ -7,16 +7,24 @@ import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { consumeRateLimit, getClientIp } from '$lib/server/rate-limit';
 import { emailSchema, submissionSchema, verificationCodeSchema } from '$lib/shared/validation';
-import { verifyCode } from '$lib/server/email-verification';
+import { consumeVerifiedCodeTx, type VerifyCodeResult } from '$lib/server/email-verification';
 import { verifyAddressExists } from '$lib/server/mapbox';
 import { buildNegotiationEmail } from '$lib/server/negotiation-email';
 import { env } from '$lib/server/env';
 import { normalizeBuildingAddress } from '$lib/server/address';
 import { geocodeAddressToZip } from '$lib/server/geocode';
 import { lookupZip } from '$lib/server/geo';
-import { insertSubmission, isRecentDuplicate } from '$lib/server/submissions';
+import { insertSubmissionUnlessRecentDuplicateTx } from '$lib/server/submissions';
+import { db } from '$lib/server/db/client';
 
 const noStore = { 'Cache-Control': 'no-store' };
+
+function statusForVerifyResult(result: Exclude<VerifyCodeResult, { ok: true }>): number {
+	if (result.reason === 'bad_code') return 401;
+	if (result.reason === 'too_many_attempts') return 429;
+	if (result.reason === 'unavailable') return 503;
+	return 410; // expired | not_found
+}
 
 export const POST: RequestHandler = async (event) => {
 	const { request, fetch } = event;
@@ -93,19 +101,6 @@ export const POST: RequestHandler = async (event) => {
 		return json({ versions: [], error: 'address_not_found' }, { status: 422, headers: noStore });
 	}
 
-	const result = await verifyCode(emailParsed.data, codeParsed.data);
-	if (!result.ok) {
-		const status =
-			result.reason === 'bad_code'
-				? 401
-				: result.reason === 'too_many_attempts'
-					? 429
-					: result.reason === 'unavailable'
-						? 503
-						: 410; // expired | not_found
-		return json({ versions: [], error: result.reason }, { status, headers: noStore });
-	}
-
 	const normalized = normalizeBuildingAddress(submission.address);
 	const zip = normalized.zip ?? (await geocodeAddressToZip(submission.address, fetch));
 	if (!normalized.building || !zip) {
@@ -118,10 +113,42 @@ export const POST: RequestHandler = async (event) => {
 		if (!zipInfo) {
 			return json({ versions: [], error: 'unsupported_zip' }, { status: 422, headers: noStore });
 		}
+	} catch {
+		return json(
+			{ versions: [], error: 'submission_unavailable' },
+			{ status: 503, headers: noStore }
+		);
+	}
 
-		const duplicate = await isRecentDuplicate(normalized.addressHash, submission.aptType);
-		if (!duplicate) {
-			await insertSubmission({
+	let versions: Awaited<ReturnType<typeof buildNegotiationEmail>>['versions'];
+	try {
+		({ versions } = await buildNegotiationEmail(
+			{
+				address: normalized.building,
+				aptType: submission.aptType,
+				rentCents: submission.rentCents,
+				zip: zipInfo.zip
+			},
+			fetch
+		));
+	} catch {
+		return json(
+			{ versions: [], error: 'email_generation_unavailable' },
+			{ status: 503, headers: noStore }
+		);
+	}
+
+	if (!db) {
+		return json({ versions: [], error: 'unavailable' }, { status: 503, headers: noStore });
+	}
+
+	let verifyResult: VerifyCodeResult;
+	try {
+		verifyResult = await db.transaction(async (tx): Promise<VerifyCodeResult> => {
+			const result = await consumeVerifiedCodeTx(tx, emailParsed.data, codeParsed.data);
+			if (!result.ok) return result;
+
+			await insertSubmissionUnlessRecentDuplicateTx(tx, {
 				buildingAddress: normalized.building,
 				addressHash: normalized.addressHash,
 				zip: zipInfo.zip,
@@ -131,7 +158,9 @@ export const POST: RequestHandler = async (event) => {
 				rentCents: submission.rentCents,
 				leaseExpiry: submission.leaseExpiry
 			});
-		}
+
+			return { ok: true };
+		});
 	} catch {
 		return json(
 			{ versions: [], error: 'submission_unavailable' },
@@ -139,14 +168,12 @@ export const POST: RequestHandler = async (event) => {
 		);
 	}
 
-	const { versions } = await buildNegotiationEmail(
-		{
-			address: normalized.building,
-			aptType: submission.aptType,
-			rentCents: submission.rentCents,
-			zip: zipInfo.zip
-		},
-		fetch
-	);
+	if (!verifyResult.ok) {
+		return json(
+			{ versions: [], error: verifyResult.reason },
+			{ status: statusForVerifyResult(verifyResult), headers: noStore }
+		);
+	}
+
 	return json({ versions }, { headers: noStore });
 };

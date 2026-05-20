@@ -20,6 +20,9 @@ import {
 	normalizeEmail
 } from './email-verification-crypto';
 
+type DbClient = NonNullable<typeof db>;
+type TxClient = Parameters<Parameters<DbClient['transaction']>[0]>[0];
+
 export const CODE_TTL_MS = 10 * 60 * 1000; // codes expire after 10 minutes
 export const MAX_ATTEMPTS = 5; // wrong-code guesses per code before lockout
 const SEND_LIMIT_PER_EMAIL_HOUR = 5; // codes requestable per email per hour
@@ -107,57 +110,67 @@ export type VerifyCodeResult =
 	  };
 
 /**
+ * Check and consume a code inside the caller's transaction. This lets routes
+ * make code consumption atomic with the durable work unlocked by verification.
+ */
+export async function consumeVerifiedCodeTx(
+	tx: TxClient,
+	email: string,
+	code: string
+): Promise<VerifyCodeResult> {
+	const emailHash = hashEmail(email);
+
+	const [row] = await tx
+		.select()
+		.from(emailVerifications)
+		.where(and(eq(emailVerifications.emailHash, emailHash), isNull(emailVerifications.consumedAt)))
+		.orderBy(desc(emailVerifications.createdAt))
+		.limit(1)
+		.for('update');
+
+	if (!row) return { ok: false, reason: 'not_found' };
+	if (row.expiresAt.getTime() <= Date.now()) return { ok: false, reason: 'expired' };
+	if (row.attempts >= MAX_ATTEMPTS) return { ok: false, reason: 'too_many_attempts' };
+
+	const expected = Buffer.from(row.codeHash, 'hex');
+	const actual = Buffer.from(hashCode(row.id, code), 'hex');
+	const matches = expected.length === actual.length && timingSafeEqual(expected, actual);
+
+	if (!matches) {
+		await tx
+			.update(emailVerifications)
+			.set({ attempts: sql`${emailVerifications.attempts} + 1` })
+			.where(eq(emailVerifications.id, row.id));
+		return { ok: false, reason: 'bad_code' };
+	}
+
+	await tx
+		.update(emailVerifications)
+		.set({ consumedAt: new Date() })
+		.where(eq(emailVerifications.id, row.id));
+
+	await tx
+		.insert(verifiedEmails)
+		.values({ email: normalizeEmail(email), emailHash })
+		.onConflictDoUpdate({
+			target: verifiedEmails.emailHash,
+			set: {
+				lastVerifiedAt: new Date(),
+				verifyCount: sql`${verifiedEmails.verifyCount} + 1`
+			}
+		});
+
+	return { ok: true };
+}
+
+/**
  * Check a code against the newest unconsumed row for the email. On success the
  * row is consumed and the address is upserted into `verified_emails`.
  */
 export async function verifyCode(email: string, code: string): Promise<VerifyCodeResult> {
 	if (!db) return { ok: false, reason: 'unavailable' };
 
-	const emailHash = hashEmail(email);
-
-	return db.transaction(async (tx): Promise<VerifyCodeResult> => {
-		const [row] = await tx
-			.select()
-			.from(emailVerifications)
-			.where(and(eq(emailVerifications.emailHash, emailHash), isNull(emailVerifications.consumedAt)))
-			.orderBy(desc(emailVerifications.createdAt))
-			.limit(1)
-			.for('update');
-
-		if (!row) return { ok: false, reason: 'not_found' };
-		if (row.expiresAt.getTime() <= Date.now()) return { ok: false, reason: 'expired' };
-		if (row.attempts >= MAX_ATTEMPTS) return { ok: false, reason: 'too_many_attempts' };
-
-		const expected = Buffer.from(row.codeHash, 'hex');
-		const actual = Buffer.from(hashCode(row.id, code), 'hex');
-		const matches = expected.length === actual.length && timingSafeEqual(expected, actual);
-
-		if (!matches) {
-			await tx
-				.update(emailVerifications)
-				.set({ attempts: sql`${emailVerifications.attempts} + 1` })
-				.where(eq(emailVerifications.id, row.id));
-			return { ok: false, reason: 'bad_code' };
-		}
-
-		await tx
-			.update(emailVerifications)
-			.set({ consumedAt: new Date() })
-			.where(eq(emailVerifications.id, row.id));
-
-		await tx
-			.insert(verifiedEmails)
-			.values({ email: normalizeEmail(email), emailHash })
-			.onConflictDoUpdate({
-				target: verifiedEmails.emailHash,
-				set: {
-					lastVerifiedAt: new Date(),
-					verifyCount: sql`${verifiedEmails.verifyCount} + 1`
-				}
-			});
-
-		return { ok: true };
-	});
+	return db.transaction((tx): Promise<VerifyCodeResult> => consumeVerifiedCodeTx(tx, email, code));
 }
 
 /**
