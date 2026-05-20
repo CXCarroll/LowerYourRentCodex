@@ -5,7 +5,7 @@
 
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { consumeIpToken, getClientIp } from '$lib/server/rate-limit';
+import { consumeRateLimit, getClientIp } from '$lib/server/rate-limit';
 import { verifyTurnstileToken } from '$lib/server/turnstile';
 import { emailSchema } from '$lib/shared/validation';
 import { requestCode, reapExpiredVerifications } from '$lib/server/email-verification';
@@ -13,10 +13,28 @@ import { sendVerificationCode } from '$lib/server/email';
 
 const noStore = { 'Cache-Control': 'no-store' };
 
-export const POST: RequestHandler = async ({ request, fetch }) => {
-	const ip = getClientIp(request);
-	if (!consumeIpToken(ip).ok) {
-		return json({ ok: false, error: 'rate_limited' }, { status: 429, headers: noStore });
+export const POST: RequestHandler = async (event) => {
+	const { request, fetch } = event;
+	const ip = getClientIp(event);
+	const ipGate = await consumeRateLimit({
+		scope: 'otp_send_ip_minute',
+		key: ip,
+		limit: 10,
+		windowMs: 60_000
+	});
+	if (!ipGate.ok) {
+		return json(
+			{ ok: false, error: ipGate.reason === 'unavailable' ? 'unavailable' : 'rate_limited' },
+			{
+				status: ipGate.reason === 'unavailable' ? 503 : 429,
+				headers: {
+					...noStore,
+					...(ipGate.reason === 'unavailable'
+						? {}
+						: { 'Retry-After': String(ipGate.retryAfterSec) })
+				}
+			}
+		);
 	}
 
 	let payload: { email?: unknown; turnstileToken?: unknown };

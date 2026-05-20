@@ -1,32 +1,37 @@
-# sv
+# Lower Your Rent
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+SvelteKit application managed with Bun.
 
-## Creating a project
+## Setup
 
-If you're seeing this, you've probably already done this step. Congrats!
+Install dependencies from the lockfile before running tests, checks, or the dev server:
 
 ```sh
-# create a new project
-npx sv create my-app
+bun install --frozen-lockfile
 ```
 
-To recreate this project with the same configuration:
+This installs the runtime and tooling modules required by the app, including `csv-parse`, `parse-address`, `drizzle-orm`, `@sveltejs/kit`, and `svelte-check`.
+
+## Development
 
 ```sh
-# recreate this project
-bun x sv@0.15.1 create --template minimal --types ts --install bun .
+bun run dev
 ```
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+## Verification
 
 ```sh
-npm run dev
+bun test
+bun run check
+```
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+For a clean-room dependency verification, remove generated install artifacts first:
+
+```sh
+rm -rf node_modules .svelte-kit
+bun install --frozen-lockfile
+bun test
+bun run check
 ```
 
 ## Building
@@ -34,9 +39,11 @@ npm run dev -- --open
 To create a production version of your app:
 
 ```sh
-npm run build
+bun run build
 ```
 
-You can preview the production build with `npm run preview`.
+You can preview the production build with:
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+```sh
+bun run preview
+```

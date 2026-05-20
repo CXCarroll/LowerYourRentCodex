@@ -8,7 +8,7 @@ import {
 	parseFmrCsv,
 	type FmrRowInput
 } from '$lib/server/admin/fmr-csv';
-import { consumeStaged, stageUpload } from '$lib/server/admin/staging';
+import { consumeStaged, stageUpload, type StagedFmrUpload } from '$lib/server/admin/staging';
 
 const SAMPLE_LIMIT = 10;
 const ERROR_DISPLAY_LIMIT = 50;
@@ -93,7 +93,7 @@ export const actions: Actions = {
 
 		const { insertCount, updateCount } = await diffAgainstDb(parsed.validRows);
 
-		const staged = stageUpload({
+		const staged = await stageUpload({
 			kind: 'hud_fmr',
 			validRows: parsed.validRows,
 			rowCount: parsed.validRows.length,
@@ -101,7 +101,6 @@ export const actions: Actions = {
 			warningCount: parsed.warnings.length,
 			insertCount,
 			updateCount,
-			sample: parsed.validRows.slice(0, SAMPLE_LIMIT),
 			fileSha256,
 			filename: file.name || 'upload.csv',
 			adminTokenHash: locals.admin.tokenHash
@@ -130,20 +129,15 @@ export const actions: Actions = {
 		const stagedId = String(form.get('stagedId') ?? '');
 		if (!stagedId) return fail(400, { message: 'Missing staged upload id.' });
 
-		const staged = consumeStaged(stagedId, locals.admin.tokenHash);
-		if (!staged) {
-			return fail(400, {
-				message: 'Staged upload expired or was already committed. Please re-upload.'
-			});
-		}
-		if (staged.kind !== 'hud_fmr') {
-			return fail(400, { message: 'Staged upload is not an FMR upload.' });
-		}
-
 		const db = assertDb();
-		let upserted = 0;
+		const adminTokenHash = locals.admin.tokenHash;
+		let result: { staged: StagedFmrUpload; upserted: number } | null = null;
 		try {
-			await db.transaction(async (tx) => {
+			result = await db.transaction(async (tx) => {
+				const staged = await consumeStaged(tx, stagedId, adminTokenHash, 'hud_fmr');
+				if (!staged) return null;
+
+				let upserted = 0;
 				const payload = staged.validRows.map((r) => ({
 					year: r.year,
 					countyFips: r.countyFips,
@@ -170,17 +164,24 @@ export const actions: Actions = {
 					insertCount: staged.insertCount,
 					updateCount: staged.updateCount
 				});
+
+				return { staged, upserted };
 			});
 		} catch (err) {
 			return fail(500, { message: `Commit failed: ${(err as Error).message}` });
 		}
+		if (!result) {
+			return fail(400, {
+				message: 'Staged upload expired or was already committed. Please re-upload.'
+			});
+		}
 
 		return {
 			committed: true,
-			upserted,
-			insertCount: staged.insertCount,
-			updateCount: staged.updateCount,
-			filename: staged.filename
+			upserted: result.upserted,
+			insertCount: result.staged.insertCount,
+			updateCount: result.staged.updateCount,
+			filename: result.staged.filename
 		};
 	}
 };

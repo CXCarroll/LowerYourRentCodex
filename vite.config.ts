@@ -30,8 +30,9 @@ export default defineConfig({
 			},
 			workbox: {
 				navigateFallback: '/',
-				navigateFallbackDenylist: [/^\/api/],
-				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}']
+				navigateFallbackDenylist: [/^\/api/, /^\/admin/],
+				modifyURLPrefix: {},
+				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2,webmanifest}']
 			}
 		})
 	]

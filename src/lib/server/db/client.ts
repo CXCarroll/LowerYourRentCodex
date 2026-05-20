@@ -15,3 +15,7 @@ export function assertDb(): NonNullable<typeof db> {
 	}
 	return db;
 }
+
+export async function closeDb(): Promise<void> {
+	await queryClient?.end({ timeout: 1 });
+}

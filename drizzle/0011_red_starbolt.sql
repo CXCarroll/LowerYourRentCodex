@@ -1,0 +1,1 @@
+CREATE INDEX "email_verifications_unconsumed_lookup_idx" ON "email_verifications" USING btree ("email_hash","created_at" DESC NULLS LAST) WHERE "email_verifications"."consumed_at" IS NULL;

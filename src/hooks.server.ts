@@ -1,10 +1,15 @@
 import { redirect, type Handle, type ServerInit } from '@sveltejs/kit';
 import { isAdminConfigured, loadAdminSession } from '$lib/server/admin/auth';
 import { startVerificationReaper } from '$lib/server/email-verification';
+import { reapExpiredRateLimitBuckets } from '$lib/server/rate-limit';
 import { env } from '$lib/server/env';
 
 export const init: ServerInit = () => {
 	startVerificationReaper();
+	const timer = setInterval(() => {
+		reapExpiredRateLimitBuckets().catch(() => {});
+	}, 15 * 60 * 1000);
+	timer.unref?.();
 };
 
 // Baseline security headers applied to every response. CSP is handled

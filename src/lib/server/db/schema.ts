@@ -7,10 +7,12 @@ import {
 	integer,
 	numeric,
 	date,
+	jsonb,
 	timestamp,
 	index,
 	primaryKey
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const aptType = pgEnum('apt_type', ['studio', '1br', '2br', '3br', '4br_plus']);
 
@@ -145,6 +147,58 @@ export const adminUploads = pgTable('admin_uploads', {
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
 });
 
+// Durable two-step admin upload staging. Parsed rows live here briefly so
+// dry-run and commit can be handled by different app replicas.
+export const adminUploadStaging = pgTable(
+	'admin_upload_staging',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		adminTokenHash: text('admin_token_hash').notNull(),
+		kind: text('kind').notNull(),
+		filename: text('filename').notNull(),
+		fileSha256: text('file_sha256').notNull(),
+		parsedPayload: jsonb('parsed_payload').$type<unknown[]>().notNull(),
+		rowCount: integer('row_count').notNull(),
+		errorCount: integer('error_count').notNull(),
+		warningCount: integer('warning_count').notNull(),
+		insertCount: integer('insert_count').notNull(),
+		updateCount: integer('update_count').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		expiresAt: timestamp('expires_at', { withTimezone: true }).notNull()
+	},
+	(t) => [
+		index('admin_upload_staging_admin_id_idx').on(t.adminTokenHash, t.id),
+		index('admin_upload_staging_expires_idx').on(t.expiresAt)
+	]
+);
+
+// Durable rate-limit buckets. Keys are server-side hashes of the identifying
+// value (IP, email hash, or account id) scoped by limiter name.
+export const rateLimitBuckets = pgTable(
+	'rate_limit_buckets',
+	{
+		scope: text('scope').notNull(),
+		keyHash: text('key_hash').notNull(),
+		count: integer('count').notNull().default(0),
+		windowStart: timestamp('window_start', { withTimezone: true }).defaultNow().notNull(),
+		expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
+	},
+	(t) => [
+		primaryKey({ columns: [t.scope, t.keyHash] }),
+		index('rate_limit_buckets_expires_idx').on(t.expiresAt)
+	]
+);
+
+// Single-admin account-wide password backoff. This deliberately is not keyed
+// by IP, so rotating addresses cannot bypass growing delays.
+export const adminLoginBackoff = pgTable('admin_login_backoff', {
+	key: text('key').primaryKey(),
+	failedCount: integer('failed_count').notNull().default(0),
+	blockedUntil: timestamp('blocked_until', { withTimezone: true }),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
+});
+
 // Admin-authored articles shown on the public /learn tab. Markdown source is
 // stored as-is; rendered to HTML server-side on each request so the rendering
 // pipeline can evolve without a migration. `slug` is unique and stable —
@@ -242,6 +296,9 @@ export const emailVerifications = pgTable(
 	},
 	(t) => [
 		index('email_verifications_email_hash_idx').on(t.emailHash),
+		index('email_verifications_unconsumed_lookup_idx')
+			.on(t.emailHash, t.createdAt.desc())
+			.where(sql`${t.consumedAt} IS NULL`),
 		index('email_verifications_expires_idx').on(t.expiresAt)
 	]
 );
@@ -264,6 +321,7 @@ export type Submission = typeof submissions.$inferSelect;
 export type NewSubmission = typeof submissions.$inferInsert;
 export type AdminSession = typeof adminSessions.$inferSelect;
 export type AdminUpload = typeof adminUploads.$inferSelect;
+export type RateLimitBucket = typeof rateLimitBuckets.$inferSelect;
 export type BlogPost = typeof blogPosts.$inferSelect;
 export type NewBlogPost = typeof blogPosts.$inferInsert;
 export type BlogStatusDb = (typeof blogStatus.enumValues)[number];

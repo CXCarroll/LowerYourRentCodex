@@ -46,8 +46,9 @@ Happy to hop on a quick call. Thanks for considering.
 interface BuildInput {
 	address: string;
 	aptType: AptType;
-	/** Raw rent value from the form, e.g. "2,500" or "2500". Punctuation tolerated. */
-	rent: string;
+	rentCents: number;
+	/** Optional ZIP already resolved by the submission pipeline. */
+	zip?: string;
 }
 
 // Demo fallback used when real vacancy data is unavailable for a metro.
@@ -59,19 +60,18 @@ function roundTo100(cents: number): number {
 }
 
 export async function buildNegotiationEmail(
-	{ address, aptType, rent }: BuildInput,
+	{ address, aptType, rentCents, zip: resolvedZip }: BuildInput,
 	fetchFn: typeof fetch
 ): Promise<{ versions: NegotiationVersion[] }> {
 	// ── 1. Rent-derived figures (always available, never throw) ──────────────
-	const r = parseInt((rent || '').replace(/\D/g, ''), 10) || 2500;
-	const currentCents = r * 100;
+	const currentCents = rentCents;
 	// Flat-percentage defaults. Overridden below by the data-driven proposal
 	// when the address resolves to a ZIP with usable market data.
 	let proposedCents = roundTo100(currentCents * 0.88);
 	let fallbackCents = roundTo100(currentCents * 0.93);
 
 	// ── 2. Resolve location + market data (best-effort) ──────────────────────
-	let zip: string | null = null;
+	let zip: string | null = resolvedZip ?? null;
 	let medianCents = roundTo100(currentCents * 0.91);
 	let vacancyPct = FALLBACK_VACANCY_PCT;
 	let fmrCents = roundTo100(currentCents * 0.95);
@@ -83,7 +83,7 @@ export async function buildNegotiationEmail(
 	let permitsLastYear: number | null = null;
 
 	try {
-		zip = await geocodeAddressToZip(address, fetchFn);
+		zip = zip ?? (await geocodeAddressToZip(address, fetchFn));
 		if (zip) {
 			const insight = await getZipInsight(zip);
 			if (insight) {

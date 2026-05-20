@@ -8,10 +8,11 @@
 // address itself is persisted plaintext in `verified_emails` for monetization.
 
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { and, count, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 import { db } from './db/client';
 import { env } from './env';
 import { emailVerifications, verifiedEmails } from './db/schema';
+import { consumeRateLimit } from './rate-limit';
 import {
 	generateCode,
 	hashCode as hashCodeWith,
@@ -61,22 +62,28 @@ export async function requestCode(email: string, ip: string): Promise<RequestCod
 	if (!db) return { ok: false, reason: 'unavailable' };
 
 	const emailHash = hashEmail(email);
-	const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
 
-	const [byEmail] = await db
-		.select({ n: count() })
-		.from(emailVerifications)
-		.where(and(eq(emailVerifications.emailHash, emailHash), gt(emailVerifications.createdAt, since)));
-	if (Number(byEmail?.n ?? 0) >= SEND_LIMIT_PER_EMAIL_HOUR) {
-		return { ok: false, reason: 'rate_limited' };
+	const ipGate = await consumeRateLimit({
+		scope: 'otp_send_ip_hour',
+		key: ip,
+		limit: SEND_LIMIT_PER_IP_HOUR,
+		windowMs: RATE_LIMIT_WINDOW_MS
+	});
+	if (!ipGate.ok) {
+		return { ok: false, reason: ipGate.reason === 'unavailable' ? 'unavailable' : 'rate_limited' };
 	}
 
-	const [byIp] = await db
-		.select({ n: count() })
-		.from(emailVerifications)
-		.where(and(eq(emailVerifications.ip, ip), gt(emailVerifications.createdAt, since)));
-	if (Number(byIp?.n ?? 0) >= SEND_LIMIT_PER_IP_HOUR) {
-		return { ok: false, reason: 'rate_limited' };
+	const emailGate = await consumeRateLimit({
+		scope: 'otp_send_email_hour',
+		key: emailHash,
+		limit: SEND_LIMIT_PER_EMAIL_HOUR,
+		windowMs: RATE_LIMIT_WINDOW_MS
+	});
+	if (!emailGate.ok) {
+		return {
+			ok: false,
+			reason: emailGate.reason === 'unavailable' ? 'unavailable' : 'rate_limited'
+		};
 	}
 
 	const id = randomUUID();
@@ -107,46 +114,50 @@ export async function verifyCode(email: string, code: string): Promise<VerifyCod
 	if (!db) return { ok: false, reason: 'unavailable' };
 
 	const emailHash = hashEmail(email);
-	const [row] = await db
-		.select()
-		.from(emailVerifications)
-		.where(and(eq(emailVerifications.emailHash, emailHash), isNull(emailVerifications.consumedAt)))
-		.orderBy(desc(emailVerifications.createdAt))
-		.limit(1);
 
-	if (!row) return { ok: false, reason: 'not_found' };
-	if (row.expiresAt.getTime() <= Date.now()) return { ok: false, reason: 'expired' };
-	if (row.attempts >= MAX_ATTEMPTS) return { ok: false, reason: 'too_many_attempts' };
+	return db.transaction(async (tx): Promise<VerifyCodeResult> => {
+		const [row] = await tx
+			.select()
+			.from(emailVerifications)
+			.where(and(eq(emailVerifications.emailHash, emailHash), isNull(emailVerifications.consumedAt)))
+			.orderBy(desc(emailVerifications.createdAt))
+			.limit(1)
+			.for('update');
 
-	const expected = Buffer.from(row.codeHash, 'hex');
-	const actual = Buffer.from(hashCode(row.id, code), 'hex');
-	const matches = expected.length === actual.length && timingSafeEqual(expected, actual);
+		if (!row) return { ok: false, reason: 'not_found' };
+		if (row.expiresAt.getTime() <= Date.now()) return { ok: false, reason: 'expired' };
+		if (row.attempts >= MAX_ATTEMPTS) return { ok: false, reason: 'too_many_attempts' };
 
-	if (!matches) {
-		await db
+		const expected = Buffer.from(row.codeHash, 'hex');
+		const actual = Buffer.from(hashCode(row.id, code), 'hex');
+		const matches = expected.length === actual.length && timingSafeEqual(expected, actual);
+
+		if (!matches) {
+			await tx
+				.update(emailVerifications)
+				.set({ attempts: sql`${emailVerifications.attempts} + 1` })
+				.where(eq(emailVerifications.id, row.id));
+			return { ok: false, reason: 'bad_code' };
+		}
+
+		await tx
 			.update(emailVerifications)
-			.set({ attempts: row.attempts + 1 })
+			.set({ consumedAt: new Date() })
 			.where(eq(emailVerifications.id, row.id));
-		return { ok: false, reason: 'bad_code' };
-	}
 
-	await db
-		.update(emailVerifications)
-		.set({ consumedAt: new Date() })
-		.where(eq(emailVerifications.id, row.id));
+		await tx
+			.insert(verifiedEmails)
+			.values({ email: normalizeEmail(email), emailHash })
+			.onConflictDoUpdate({
+				target: verifiedEmails.emailHash,
+				set: {
+					lastVerifiedAt: new Date(),
+					verifyCount: sql`${verifiedEmails.verifyCount} + 1`
+				}
+			});
 
-	await db
-		.insert(verifiedEmails)
-		.values({ email: normalizeEmail(email), emailHash })
-		.onConflictDoUpdate({
-			target: verifiedEmails.emailHash,
-			set: {
-				lastVerifiedAt: new Date(),
-				verifyCount: sql`${verifiedEmails.verifyCount} + 1`
-			}
-		});
-
-	return { ok: true };
+		return { ok: true };
+	});
 }
 
 /**

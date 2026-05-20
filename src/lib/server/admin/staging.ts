@@ -1,8 +1,7 @@
-// In-memory staging for the admin two-step upload flow.
-// Lives in a single-process Map with 15-minute TTL. If the server restarts the admin
-// just re-uploads — no persistence. Cap at 20 entries, LRU-evict on overflow.
-
-import { randomUUID } from 'node:crypto';
+import { and, eq, gt, lt } from 'drizzle-orm';
+import { assertDb } from '$lib/server/db/client';
+import { adminUploadStaging } from '$lib/server/db/schema';
+import { APT_TYPES } from '$lib/shared/apt-types';
 import type { VacancyRowInput } from './vacancy-csv';
 import type { FmrRowInput } from './fmr-csv';
 
@@ -18,6 +17,7 @@ interface StagedCommon {
 	fileSha256: string;
 	filename: string;
 	createdAt: number;
+	expiresAt: number;
 	adminTokenHash: string; // commit must come from the same session
 }
 
@@ -36,48 +36,186 @@ export interface StagedFmrUpload extends StagedCommon {
 export type StagedUpload = StagedVacancyUpload | StagedFmrUpload;
 
 const TTL_MS = 15 * 60 * 1000;
-const MAX_ENTRIES = 20;
+const SAMPLE_LIMIT = 10;
+const APT_TYPE_SET = new Set<string>(APT_TYPES);
 
-const staged = new Map<string, StagedUpload>();
+type DbClient = ReturnType<typeof assertDb>;
+type TxClient = Parameters<Parameters<DbClient['transaction']>[0]>[0];
+type StagedVacancyInsert = Omit<StagedVacancyUpload, 'id' | 'createdAt' | 'expiresAt' | 'sample'>;
+type StagedFmrInsert = Omit<StagedFmrUpload, 'id' | 'createdAt' | 'expiresAt' | 'sample'>;
+type StagedInsert = StagedVacancyInsert | StagedFmrInsert;
+type StagedRow = typeof adminUploadStaging.$inferSelect;
 
-function sweep(): void {
-	const cutoff = Date.now() - TTL_MS;
-	for (const [id, entry] of staged) {
-		if (entry.createdAt < cutoff) staged.delete(id);
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isInteger(value: unknown): value is number {
+	return typeof value === 'number' && Number.isInteger(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+	return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isVacancyRows(value: unknown): value is VacancyRowInput[] {
+	return (
+		Array.isArray(value) &&
+		value.every(
+			(row) =>
+				isRecord(row) &&
+				isInteger(row.year) &&
+				isInteger(row.quarter) &&
+				typeof row.cbsaCode === 'string' &&
+				isFiniteNumber(row.rentalVacancyPct)
+		)
+	);
+}
+
+function isFmrRows(value: unknown): value is FmrRowInput[] {
+	return (
+		Array.isArray(value) &&
+		value.every(
+			(row) =>
+				isRecord(row) &&
+				isInteger(row.year) &&
+				typeof row.countyFips === 'string' &&
+				typeof row.aptType === 'string' &&
+				APT_TYPE_SET.has(row.aptType) &&
+				isInteger(row.fmrCents)
+		)
+	);
+}
+
+function toStagedUpload(row: StagedRow): StagedUpload {
+	const common = {
+		id: row.id,
+		rowCount: row.rowCount,
+		errorCount: row.errorCount,
+		warningCount: row.warningCount,
+		insertCount: row.insertCount,
+		updateCount: row.updateCount,
+		fileSha256: row.fileSha256,
+		filename: row.filename,
+		createdAt: row.createdAt.getTime(),
+		expiresAt: row.expiresAt.getTime(),
+		adminTokenHash: row.adminTokenHash
+	};
+
+	if (row.kind === 'vacancy_rates') {
+		if (!isVacancyRows(row.parsedPayload)) {
+			throw new Error('Staged vacancy upload payload is malformed.');
+		}
+		return {
+			...common,
+			kind: 'vacancy_rates',
+			validRows: row.parsedPayload,
+			sample: row.parsedPayload.slice(0, SAMPLE_LIMIT)
+		};
 	}
-	while (staged.size > MAX_ENTRIES) {
-		const oldest = staged.keys().next().value;
-		if (!oldest) break;
-		staged.delete(oldest);
+
+	if (row.kind === 'hud_fmr') {
+		if (!isFmrRows(row.parsedPayload)) {
+			throw new Error('Staged FMR upload payload is malformed.');
+		}
+		return {
+			...common,
+			kind: 'hud_fmr',
+			validRows: row.parsedPayload,
+			sample: row.parsedPayload.slice(0, SAMPLE_LIMIT)
+		};
 	}
+
+	throw new Error(`Unknown staged upload kind: ${row.kind}`);
 }
 
-export function stageUpload<T extends StagedUpload>(
-	input: Omit<T, 'id' | 'createdAt'>
-): T {
-	sweep();
-	const id = randomUUID();
-	const entry = { ...input, id, createdAt: Date.now() } as T;
-	staged.set(id, entry);
-	return entry;
+export async function stageUpload(input: StagedVacancyInsert): Promise<StagedVacancyUpload>;
+export async function stageUpload(input: StagedFmrInsert): Promise<StagedFmrUpload>;
+export async function stageUpload(input: StagedInsert): Promise<StagedUpload> {
+	const db = assertDb();
+	await reapExpiredStagedUploads();
+
+	const expiresAt = new Date(Date.now() + TTL_MS);
+	const [row] = await db
+		.insert(adminUploadStaging)
+		.values({
+			adminTokenHash: input.adminTokenHash,
+			kind: input.kind,
+			filename: input.filename,
+			fileSha256: input.fileSha256,
+			parsedPayload: input.validRows,
+			rowCount: input.rowCount,
+			errorCount: input.errorCount,
+			warningCount: input.warningCount,
+			insertCount: input.insertCount,
+			updateCount: input.updateCount,
+			expiresAt
+		})
+		.returning();
+
+	return toStagedUpload(row);
 }
 
-export function peekStaged(id: string, adminTokenHash: string): StagedUpload | null {
-	sweep();
-	const entry = staged.get(id);
-	if (!entry) return null;
-	if (entry.adminTokenHash !== adminTokenHash) return null;
-	return entry;
+export async function peekStaged(id: string, adminTokenHash: string): Promise<StagedUpload | null> {
+	const db = assertDb();
+	await reapExpiredStagedUploads();
+	const [row] = await db
+		.select()
+		.from(adminUploadStaging)
+		.where(
+			and(
+				eq(adminUploadStaging.id, id),
+				eq(adminUploadStaging.adminTokenHash, adminTokenHash),
+				gt(adminUploadStaging.expiresAt, new Date())
+			)
+		)
+		.limit(1);
+	return row ? toStagedUpload(row) : null;
 }
 
-export function consumeStaged(id: string, adminTokenHash: string): StagedUpload | null {
-	const entry = peekStaged(id, adminTokenHash);
-	if (!entry) return null;
-	staged.delete(id);
-	return entry;
+export async function consumeStaged(
+	tx: TxClient,
+	id: string,
+	adminTokenHash: string,
+	kind: 'vacancy_rates'
+): Promise<StagedVacancyUpload | null>;
+export async function consumeStaged(
+	tx: TxClient,
+	id: string,
+	adminTokenHash: string,
+	kind: 'hud_fmr'
+): Promise<StagedFmrUpload | null>;
+export async function consumeStaged(
+	tx: TxClient,
+	id: string,
+	adminTokenHash: string,
+	kind: StagedKind
+): Promise<StagedUpload | null> {
+	const [row] = await tx
+		.delete(adminUploadStaging)
+		.where(
+			and(
+				eq(adminUploadStaging.id, id),
+				eq(adminUploadStaging.adminTokenHash, adminTokenHash),
+				eq(adminUploadStaging.kind, kind),
+				gt(adminUploadStaging.expiresAt, new Date())
+			)
+		)
+		.returning();
+	return row ? toStagedUpload(row) : null;
+}
+
+export async function reapExpiredStagedUploads(): Promise<number> {
+	const db = assertDb();
+	const result = await db
+		.delete(adminUploadStaging)
+		.where(lt(adminUploadStaging.expiresAt, new Date()))
+		.returning({ id: adminUploadStaging.id });
+	return result.length;
 }
 
 /** For tests. */
-export function _resetStaging(): void {
-	staged.clear();
+export async function _resetStaging(): Promise<void> {
+	const db = assertDb();
+	await db.delete(adminUploadStaging);
 }

@@ -7,7 +7,7 @@
 
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getClientIp } from '$lib/server/rate-limit';
+import { consumeRateLimit, getClientIp } from '$lib/server/rate-limit';
 import { suggestMapboxAddresses } from '$lib/server/mapbox';
 import { env } from '$lib/server/env';
 
@@ -15,28 +15,27 @@ import { env } from '$lib/server/env';
 // autocomplete is higher-volume than OTP requests. Refills to full each window.
 const CAPACITY = 30;
 const WINDOW_MS = 60_000;
-const buckets = new Map<string, { tokens: number; refilledAt: number }>();
 
-function consume(ip: string): boolean {
-	const now = Date.now();
-	const b = buckets.get(ip);
-	if (!b) {
-		buckets.set(ip, { tokens: CAPACITY - 1, refilledAt: now });
-		return true;
-	}
-	if (now - b.refilledAt >= WINDOW_MS) {
-		b.tokens = CAPACITY;
-		b.refilledAt = now;
-	}
-	if (b.tokens <= 0) return false;
-	b.tokens -= 1;
-	return true;
-}
-
-export const GET: RequestHandler = async ({ url, request, fetch }) => {
-	const ip = getClientIp(request);
-	if (!consume(ip)) {
-		return json({ matches: [] }, { status: 429, headers: { 'Cache-Control': 'no-store' } });
+export const GET: RequestHandler = async (event) => {
+	const { url, fetch } = event;
+	const ip = getClientIp(event);
+	const gate = await consumeRateLimit({
+		scope: 'mapbox_suggest_ip',
+		key: ip,
+		limit: CAPACITY,
+		windowMs: WINDOW_MS
+	});
+	if (!gate.ok) {
+		return json(
+			{ matches: [] },
+			{
+				status: gate.reason === 'unavailable' ? 503 : 429,
+				headers: {
+					'Cache-Control': 'no-store',
+					...(gate.reason === 'unavailable' ? {} : { 'Retry-After': String(gate.retryAfterSec) })
+				}
+			}
+		);
 	}
 
 	const q = (url.searchParams.get('q') ?? '').trim();

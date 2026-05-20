@@ -1,36 +1,83 @@
-// Dedicated IP token bucket for /admin/login POSTs.
-// Tighter than the public /api bucket: 5 attempts per 10-minute window.
-// Single-process, in-memory — sufficient for a single Railway instance.
+// Durable limits for /admin/login.
 
-interface Bucket {
-	tokens: number;
-	refilledAt: number;
+import { sql } from 'drizzle-orm';
+import { db } from '../db/client';
+import { adminLoginBackoff } from '../db/schema';
+import { consumeRateLimit, type RateLimitResult } from '../rate-limit';
+
+const IP_LIMIT = 5;
+const IP_WINDOW_MS = 10 * 60 * 1000;
+const ACCOUNT_KEY = 'admin';
+const BASE_BACKOFF_SEC = 30;
+const MAX_BACKOFF_SEC = 30 * 60;
+
+export function consumeLoginAttempt(ip: string): Promise<RateLimitResult> {
+	return consumeRateLimit({
+		scope: 'admin_login_ip',
+		key: ip,
+		limit: IP_LIMIT,
+		windowMs: IP_WINDOW_MS
+	});
 }
 
-const CAPACITY = 5;
-const WINDOW_MS = 10 * 60 * 1000;
-const buckets = new Map<string, Bucket>();
+export async function checkAdminLoginBackoff(): Promise<RateLimitResult> {
+	if (!db) return { ok: false, retryAfterSec: 1, reason: 'unavailable' };
 
-export function consumeLoginAttempt(ip: string): { ok: boolean; retryAfterSec: number } {
-	const now = Date.now();
-	const b = buckets.get(ip);
-	if (!b) {
-		buckets.set(ip, { tokens: CAPACITY - 1, refilledAt: now });
-		return { ok: true, retryAfterSec: 0 };
+	let rows: Array<{ blockedUntil: Date | null }>;
+	try {
+		rows = (await db
+			.select({ blockedUntil: adminLoginBackoff.blockedUntil })
+			.from(adminLoginBackoff)
+			.where(sql`${adminLoginBackoff.key} = ${ACCOUNT_KEY}`)
+			.limit(1)) as Array<{ blockedUntil: Date | null }>;
+	} catch {
+		return { ok: false, retryAfterSec: 1, reason: 'unavailable' };
 	}
-	if (now - b.refilledAt >= WINDOW_MS) {
-		b.tokens = CAPACITY;
-		b.refilledAt = now;
-	}
-	if (b.tokens <= 0) {
-		const retryAfterSec = Math.max(1, Math.ceil((WINDOW_MS - (now - b.refilledAt)) / 1000));
-		return { ok: false, retryAfterSec };
-	}
-	b.tokens -= 1;
-	return { ok: true, retryAfterSec: 0 };
+
+	const blockedUntil = rows[0]?.blockedUntil;
+	if (!blockedUntil) return { ok: true, retryAfterSec: 0 };
+
+	const retryAfterSec = Math.ceil((blockedUntil.getTime() - Date.now()) / 1000);
+	return retryAfterSec > 0
+		? { ok: false, retryAfterSec }
+		: { ok: true, retryAfterSec: 0 };
 }
 
-/** For tests. */
-export function _resetLoginAttempts(): void {
-	buckets.clear();
+export async function recordFailedAdminLogin(): Promise<void> {
+	if (!db) return;
+
+	await db
+		.execute(sql`
+			insert into ${adminLoginBackoff} (
+				key,
+				failed_count,
+				blocked_until,
+				updated_at
+			)
+			values (
+				${ACCOUNT_KEY},
+				1,
+				now() + (${BASE_BACKOFF_SEC}::double precision * interval '1 second'),
+				now()
+			)
+			on conflict (key) do update set
+				failed_count = ${adminLoginBackoff.failedCount} + 1,
+				blocked_until = now() + (
+					least(
+						${MAX_BACKOFF_SEC}::double precision,
+						${BASE_BACKOFF_SEC}::double precision *
+							power(
+								2::double precision,
+								least(${adminLoginBackoff.failedCount}, 6)::double precision
+							)
+					)::double precision * interval '1 second'
+				),
+				updated_at = now()
+		`)
+		.catch(() => {});
+}
+
+export async function resetAdminLoginBackoff(): Promise<void> {
+	if (!db) return;
+	await db.delete(adminLoginBackoff).where(sql`${adminLoginBackoff.key} = ${ACCOUNT_KEY}`);
 }

@@ -24,6 +24,15 @@ export const submissionSchema = z.object({
 
 export type SubmissionPayload = z.infer<typeof submissionSchema>;
 
+export function rentInputToCents(input: string): number | null {
+	const normalized = input.trim().replace(/[$,\s]/g, '');
+	if (!/^\d+$/.test(normalized)) return null;
+
+	const dollars = Number(normalized);
+	if (!Number.isSafeInteger(dollars)) return null;
+	return dollars * 100;
+}
+
 // Email-verification inputs — shared by the client form and the
 // /api/verify/* endpoints. Email is trimmed + lowercased so the value that
 // reaches hashing/storage is already normalized.

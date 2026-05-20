@@ -53,13 +53,26 @@ const schema = z.object({
 		.string()
 		.optional()
 		.transform((v) => (v && v.length > 0 ? v : undefined)),
-	// Set to `true` only when the app is served behind Cloudflare. When true the
-	// CF-Connecting-IP header is trusted as the real client IP for rate
-	// limiting; otherwise it is ignored, since a client could spoof it.
+	// Optional separate pepper for hashing rate-limit keys. Falls back to
+	// EMAIL_PEPPER when unset, but production must have one of them via the
+	// existing EMAIL_PEPPER boot guard.
+	RATE_LIMIT_PEPPER: z
+		.string()
+		.optional()
+		.transform((v) => (v && v.length > 0 ? v : undefined)),
+	// Set to `true` only when the app is served behind Cloudflare. The immediate
+	// peer must also match TRUSTED_PROXY_CIDRS before CF-Connecting-IP is trusted.
 	TRUST_CF_CONNECTING_IP: z
 		.string()
 		.optional()
 		.transform((v) => v === 'true' || v === '1'),
+	// Comma-separated CIDR/IP list for infrastructure allowed to set
+	// X-Forwarded-For / X-Real-IP. Leave empty unless Railway or a known proxy
+	// terminates traffic before the app.
+	TRUSTED_PROXY_CIDRS: z
+		.string()
+		.optional()
+		.transform((v) => (v && v.length > 0 ? v : undefined)),
 	// MVP / demo escape hatch. When `true` the negotiate flow runs with NO
 	// external dependencies: Resend is skipped, the emailed code is the fixed
 	// string "123456", and the Turnstile bot check always passes. Also drops
@@ -82,7 +95,9 @@ function load() {
 		RESEND_API_KEY: privateEnv.RESEND_API_KEY,
 		EMAIL_FROM: privateEnv.EMAIL_FROM,
 		EMAIL_PEPPER: privateEnv.EMAIL_PEPPER,
+		RATE_LIMIT_PEPPER: privateEnv.RATE_LIMIT_PEPPER,
 		TRUST_CF_CONNECTING_IP: privateEnv.TRUST_CF_CONNECTING_IP,
+		TRUSTED_PROXY_CIDRS: privateEnv.TRUSTED_PROXY_CIDRS,
 		DEMO_MODE: privateEnv.DEMO_MODE,
 		NODE_ENV: privateEnv.NODE_ENV
 	});

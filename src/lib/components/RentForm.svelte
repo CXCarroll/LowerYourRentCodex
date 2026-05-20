@@ -18,7 +18,7 @@
 	import OtpInput from '$lib/components/OtpInput.svelte';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import { env as publicEnv } from '$env/dynamic/public';
-	import { emailSchema } from '$lib/shared/validation';
+	import { emailSchema, rentInputToCents, submissionSchema } from '$lib/shared/validation';
 	import type { AptType } from '$lib/shared/apt-types';
 	import { formatDollars, type NegotiationVersion } from '$lib/shared/email-template';
 
@@ -45,6 +45,7 @@
 	// Email — required. A 6-digit verification code is mailed here on submit.
 	let email = $state('');
 	let emailError = $state('');
+	let formError = $state('');
 
 	// ─── Collapse state ───────────────────────────────────────────────────────
 	let collapsed = $state({
@@ -240,6 +241,7 @@ Thanks for considering.
 		copied = false;
 		codeError = '';
 		addressError = '';
+		formError = '';
 		otpResetKey += 1;
 	}
 
@@ -272,9 +274,40 @@ Thanks for considering.
 		return 'Enter a valid email address.';
 	}
 
+	function currentSubmissionPayload() {
+		return {
+			address,
+			aptType,
+			rentCents: rentInputToCents(rent) ?? undefined,
+			leaseExpiry: lease
+		};
+	}
+
+	function focusInvalidSubmissionField(path: string) {
+		if (path === 'address') expand('address');
+		else if (path === 'rentCents') expand('rent');
+		else if (path === 'leaseExpiry') expand('lease');
+		else if (path === 'aptType') collapsed = { ...collapsed, aptType: false };
+	}
+
+	function validateSubmissionForClient() {
+		const parsed = submissionSchema.safeParse(currentSubmissionPayload());
+		if (parsed.success) {
+			formError = '';
+			return true;
+		}
+
+		const first = parsed.error.issues[0];
+		formError = first?.message ?? 'Check your rent details and try again.';
+		focusInvalidSubmissionField(first?.path.join('.') ?? '');
+		return false;
+	}
+
 	// Step 1: validate the email and ask the server to mail a 6-digit code.
 	async function sendCode(isResend: boolean) {
 		if (sending) return;
+		if (!isResend && !validateSubmissionForClient()) return;
+
 		const parsed = emailSchema.safeParse(email);
 		if (!parsed.success) {
 			const msg = parsed.error.issues[0]?.message ?? 'Enter a valid email address.';
@@ -318,6 +351,8 @@ Thanks for considering.
 		e?.preventDefault();
 		if (phase !== 'form') return;
 		addressError = '';
+		formError = '';
+		if (!validateSubmissionForClient()) return;
 		void sendCode(false);
 	}
 
@@ -339,7 +374,11 @@ Thanks for considering.
 			const res = await fetch('/api/verify/check', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ email: sentToEmail, code, address, aptType, rent })
+				body: JSON.stringify({
+					email: sentToEmail,
+					code,
+					...currentSubmissionPayload()
+				})
 			});
 			const data = await res.json().catch(() => ({}));
 
@@ -349,6 +388,25 @@ Thanks for considering.
 				phase = 'form';
 				addressError = "We couldn't find that address — double-check it and try again.";
 				expand('address');
+				return;
+			}
+
+			if (
+				res.status === 422 &&
+				(data?.error === 'invalid_submission' ||
+					data?.error === 'missing_zip' ||
+					data?.error === 'unsupported_zip')
+			) {
+				phase = 'form';
+				const issue = Array.isArray(data?.issues) ? data.issues[0] : null;
+				formError =
+					typeof issue?.message === 'string'
+						? issue.message
+						: data?.error === 'unsupported_zip'
+							? "We don't have market data for that ZIP yet."
+							: "We couldn't resolve that address — include city, state, and ZIP.";
+				if (typeof issue?.path === 'string') focusInvalidSubmissionField(issue.path);
+				else expand('address');
 				return;
 			}
 
@@ -473,6 +531,7 @@ Thanks for considering.
 						onValue={(v) => {
 							address = v;
 							addressError = '';
+							formError = '';
 						}}
 					/>
 				</div>
@@ -596,6 +655,7 @@ Thanks for considering.
 				value={aptType}
 				onSelect={(v) => {
 					aptType = v;
+					formError = '';
 					setTimeout(() => collapse('aptType'), 340);
 				}}
 			/>
@@ -622,7 +682,10 @@ Thanks for considering.
 						placeholder="2,500"
 						prefix="$"
 						value={rent}
-						onValue={(v) => (rent = v.replace(/[^\d,]/g, ''))}
+						onValue={(v) => {
+							rent = v.replace(/[^\d,]/g, '');
+							formError = '';
+						}}
 					/>
 				</div>
 			</CollapsibleField>
@@ -646,6 +709,7 @@ Thanks for considering.
 						value={lease}
 						onValue={(v) => {
 							lease = v;
+							formError = '';
 							if (v) setTimeout(() => collapse('lease'), 180);
 						}}
 					/>
@@ -859,6 +923,14 @@ Thanks for considering.
 						</svg>
 					{/if}
 				</PrimaryButton>
+				{#if formError}
+					<div
+						class="text-center"
+						style="font-family: var(--font-sans); font-size: 12px; line-height: 1.45; color: rgba(192,57,43,0.92);"
+					>
+						{formError}
+					</div>
+				{/if}
 				<div
 					class="text-center"
 					style="font-family: var(--font-sans); font-size: 12px; line-height: 1.45; color: rgba(30,30,40,0.5);"
