@@ -1,10 +1,10 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { beforeAll, describe, expect, mock, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
 type LoadedModules = Awaited<ReturnType<typeof loadModules>>;
 
 async function loadModules() {
-	const [{ desc, eq }, { db, closeDb }, schema, verification] = await Promise.all([
+	const [{ desc, eq }, { db }, schema, verification] = await Promise.all([
 		import('drizzle-orm'),
 		import('../../src/lib/server/db/client'),
 		import('../../src/lib/server/db/schema'),
@@ -15,7 +15,7 @@ async function loadModules() {
 		throw new Error('DATABASE_URL is required for email verification concurrency tests.');
 	}
 
-	return { desc, eq, db, closeDb, schema, verification };
+	return { desc, eq, db, schema, verification };
 }
 
 if (!process.env.DATABASE_URL) {
@@ -34,10 +34,6 @@ if (!process.env.DATABASE_URL) {
 			mock.module('$app/environment', () => ({ building: false }));
 
 			modules = await loadModules();
-		});
-
-		afterAll(async () => {
-			await modules?.closeDb();
 		});
 
 		async function cleanup(email: string, ip: string) {

@@ -42,24 +42,32 @@ const timingLog = mock((message?: unknown) => {
 const originalConsoleInfo = console.info;
 console.info = timingLog as unknown as typeof console.info;
 
-mock.module('$lib/server/db/client', () => ({ db: { transaction } }));
-mock.module('$lib/server/rate-limit', () => ({
-	consumeRateLimit,
-	getClientIp: () => '127.0.0.1'
-}));
-mock.module('$lib/server/email-verification', () => ({ consumeVerifiedCodeTx }));
-mock.module('$lib/server/mapbox', () => ({ verifyAddressExists }));
-mock.module('$lib/server/geocode', () => ({ geocodeAddressToZip }));
-mock.module('$lib/server/geo', () => ({ lookupZip }));
-mock.module('$lib/server/submissions', () => ({ insertSubmissionUnlessRecentDuplicateTx }));
-mock.module('$lib/server/negotiation-email', () => ({ buildNegotiationEmail }));
-mock.module('$lib/server/env', () => ({ env: { MAPBOX_TOKEN: undefined } }));
+mock.module('$env/dynamic/private', () => ({ env: process.env }));
+mock.module('$app/environment', () => ({ building: false }));
 
-const { POST } = await import('../../src/routes/api/verify/check/+server');
+const { createVerifyCheckPost } = await import('../../src/routes/api/verify/check/+server');
+
+const POST = createVerifyCheckPost({
+	consumeRateLimit,
+	getClientIp: () => '127.0.0.1',
+	consumeVerifiedCodeTx,
+	verifyAddressExists,
+	buildNegotiationEmail,
+	normalizeBuildingAddress: (address: string) => ({
+		building: address.includes('123 Main') ? '123 Main St, Brooklyn, NY' : address.trim(),
+		zip: address.includes('11201') ? '11201' : null,
+		addressHash: 'address-hash',
+		unitHash: address.includes('Apt 4B') ? 'unit-hash' : null
+	}),
+	geocodeAddressToZip,
+	lookupZip,
+	insertSubmissionUnlessRecentDuplicateTx,
+	db: { transaction } as unknown as NonNullable<Parameters<typeof createVerifyCheckPost>[0]['db']>,
+	getMapboxToken: () => undefined
+});
 
 afterAll(() => {
 	console.info = originalConsoleInfo;
-	mock.restore();
 });
 
 function request(body: Record<string, unknown>) {

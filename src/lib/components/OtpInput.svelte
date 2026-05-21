@@ -9,12 +9,23 @@
 		onComplete: (code: string) => void;
 		disabled?: boolean;
 		error?: boolean;
+		ariaLabelledby?: string;
+		ariaDescribedby?: string;
+		ariaErrormessage?: string;
 		/** Bump this (from the parent) to clear all boxes and refocus box 0 —
 		 *  used after a bad code or a resend. */
 		resetKey?: number;
 	}
 
-	let { onComplete, disabled = false, error = false, resetKey = 0 }: Props = $props();
+	let {
+		onComplete,
+		disabled = false,
+		error = false,
+		ariaLabelledby,
+		ariaDescribedby,
+		ariaErrormessage,
+		resetKey = 0
+	}: Props = $props();
 
 	const LEN = 6;
 	let digits = $state<string[]>(Array(LEN).fill(''));
@@ -76,7 +87,7 @@
 	});
 </script>
 
-<div class="flex" style="gap: 8px;">
+<div class="flex" role="group" aria-labelledby={ariaLabelledby} style="gap: 8px;">
 	{#each digits as digit, i (i)}
 		<input
 			bind:this={inputs[i]}
@@ -88,6 +99,8 @@
 			autocomplete={i === 0 ? 'one-time-code' : 'off'}
 			aria-label={`Digit ${i + 1}`}
 			aria-invalid={error ? 'true' : undefined}
+			aria-describedby={error ? ariaDescribedby : undefined}
+			aria-errormessage={error ? ariaErrormessage : undefined}
 			oninput={(e) => onInput(i, e)}
 			onkeydown={(e) => onKeydown(i, e)}
 			onpaste={onPaste}

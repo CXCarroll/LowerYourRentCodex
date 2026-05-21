@@ -96,7 +96,28 @@ function statusForVerifyResult(result: Exclude<VerifyCodeResult, { ok: true }>):
 	return 410; // expired | not_found
 }
 
-export const POST: RequestHandler = async (event) => {
+type VerifyCheckTx = Parameters<typeof consumeVerifiedCodeTx>[0];
+
+interface VerifyCheckDb {
+	transaction<T>(callback: (tx: VerifyCheckTx) => Promise<T>): Promise<T>;
+}
+
+interface VerifyCheckDeps {
+	consumeRateLimit: typeof consumeRateLimit;
+	getClientIp: typeof getClientIp;
+	consumeVerifiedCodeTx: typeof consumeVerifiedCodeTx;
+	verifyAddressExists: typeof verifyAddressExists;
+	buildNegotiationEmail: typeof buildNegotiationEmail;
+	normalizeBuildingAddress: typeof normalizeBuildingAddress;
+	geocodeAddressToZip: typeof geocodeAddressToZip;
+	lookupZip: typeof lookupZip;
+	insertSubmissionUnlessRecentDuplicateTx: typeof insertSubmissionUnlessRecentDuplicateTx;
+	db: VerifyCheckDb | null;
+	getMapboxToken: () => string | undefined;
+}
+
+export function createVerifyCheckPost(deps: VerifyCheckDeps): RequestHandler {
+	return async (event) => {
 	const { request, fetch } = event;
 	const timings = createRequestTimings();
 
@@ -112,9 +133,9 @@ export const POST: RequestHandler = async (event) => {
 		return response;
 	}
 
-	const ip = getClientIp(event);
+	const ip = deps.getClientIp(event);
 	const ipGate = await timings.time('rate_limit', () =>
-		consumeRateLimit({
+		deps.consumeRateLimit({
 			scope: 'otp_check_ip',
 			key: ip,
 			limit: 10,
@@ -188,7 +209,7 @@ export const POST: RequestHandler = async (event) => {
 	// Verify the address BEFORE the code so a bad address doesn't consume the
 	// code or burn a verification attempt. Disabled when MAPBOX_TOKEN is unset.
 	const addressOk = await timings.time('address_verification', () =>
-		verifyAddressExists(submission.address, env.MAPBOX_TOKEN, fetch)
+		deps.verifyAddressExists(submission.address, deps.getMapboxToken(), fetch)
 	);
 	if (!addressOk) {
 		return respond(
@@ -198,8 +219,8 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	const { normalized, zip } = await timings.time('geocode', async () => {
-		const normalized = normalizeBuildingAddress(submission.address);
-		const zip = normalized.zip ?? (await geocodeAddressToZip(submission.address, fetch));
+		const normalized = deps.normalizeBuildingAddress(submission.address);
+		const zip = normalized.zip ?? (await deps.geocodeAddressToZip(submission.address, fetch));
 		return { normalized, zip };
 	});
 	if (!normalized.building || !zip) {
@@ -208,7 +229,7 @@ export const POST: RequestHandler = async (event) => {
 
 	let zipInfo: Awaited<ReturnType<typeof lookupZip>>;
 	try {
-		zipInfo = await timings.time('zip_lookup', () => lookupZip(zip));
+		zipInfo = await timings.time('zip_lookup', () => deps.lookupZip(zip));
 		if (!zipInfo) {
 			return respond(
 				{ versions: [], error: 'unsupported_zip' },
@@ -225,7 +246,7 @@ export const POST: RequestHandler = async (event) => {
 	let versions: Awaited<ReturnType<typeof buildNegotiationEmail>>['versions'];
 	try {
 		({ versions } = await timings.time('negotiation_email_generation', () =>
-			buildNegotiationEmail(
+			deps.buildNegotiationEmail(
 				{
 					address: normalized.building,
 					aptType: submission.aptType,
@@ -242,19 +263,19 @@ export const POST: RequestHandler = async (event) => {
 		);
 	}
 
-	if (!db) {
+	if (!deps.db) {
 		return respond({ versions: [], error: 'unavailable' }, { status: 503, headers: noStore });
 	}
-	const database = db;
+	const database = deps.db;
 
 	let verifyResult: VerifyCodeResult;
 	try {
 		verifyResult = await timings.time('otp_transaction', () =>
 			database.transaction(async (tx): Promise<VerifyCodeResult> => {
-				const result = await consumeVerifiedCodeTx(tx, emailParsed.data, codeParsed.data);
+				const result = await deps.consumeVerifiedCodeTx(tx, emailParsed.data, codeParsed.data);
 				if (!result.ok) return result;
 
-				await insertSubmissionUnlessRecentDuplicateTx(tx, {
+				await deps.insertSubmissionUnlessRecentDuplicateTx(tx, {
 					buildingAddress: normalized.building,
 					addressHash: normalized.addressHash,
 					unitHash: normalized.unitHash,
@@ -284,4 +305,19 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	return respond({ versions }, { headers: noStore });
-};
+	};
+}
+
+export const POST = createVerifyCheckPost({
+	consumeRateLimit,
+	getClientIp,
+	consumeVerifiedCodeTx,
+	verifyAddressExists,
+	buildNegotiationEmail,
+	normalizeBuildingAddress,
+	geocodeAddressToZip,
+	lookupZip,
+	insertSubmissionUnlessRecentDuplicateTx,
+	db,
+	getMapboxToken: () => env.MAPBOX_TOKEN
+});

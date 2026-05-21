@@ -1,9 +1,9 @@
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
 
 type LoadedModules = Awaited<ReturnType<typeof loadModules>>;
 
 async function loadModules() {
-	const [{ eq }, { db, closeDb }, schema, staging] = await Promise.all([
+	const [{ eq }, { db }, schema, staging] = await Promise.all([
 		import('drizzle-orm'),
 		import('../../src/lib/server/db/client'),
 		import('../../src/lib/server/db/schema'),
@@ -14,7 +14,7 @@ async function loadModules() {
 		throw new Error('DATABASE_URL is required for admin upload staging tests.');
 	}
 
-	return { eq, db, closeDb, schema, staging };
+	return { eq, db, schema, staging };
 }
 
 if (!process.env.DATABASE_URL) {
@@ -36,10 +36,6 @@ if (!process.env.DATABASE_URL) {
 
 		afterEach(async () => {
 			await modules?.staging._resetStaging();
-		});
-
-		afterAll(async () => {
-			await modules?.closeDb();
 		});
 
 		function vacancyUpload(adminTokenHash = 'admin-token-a') {

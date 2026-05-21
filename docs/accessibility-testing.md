@@ -23,3 +23,4 @@ Manual release checks:
 - Test VoiceOver on macOS with Safari or Chrome.
 - Test NVDA on Windows with Firefox or Chrome.
 - Confirm screen reader announcements match the visible focus location and the control purpose.
+- Confirm RentForm address, rent, lease, email, form-level, and verification-code errors are announced and included in each invalid control's description.

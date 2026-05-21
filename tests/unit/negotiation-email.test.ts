@@ -1,8 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 
-mock.module('$lib/server/db/client', () => ({ db: null }));
-mock.module('$lib/server/admin/zip-explorer', () => ({ getZipInsight: async () => null }));
-mock.module('$lib/server/proposal', () => ({ computeProposal: async () => null }));
+mock.module('$env/dynamic/private', () => ({ env: process.env }));
+mock.module('$app/environment', () => ({ building: false }));
 
 const { buildNegotiationEmail } = await import('../../src/lib/server/negotiation-email');
 

@@ -32,9 +32,14 @@
 	const ADDRESS_ERROR_ID = 'lyr-address-error';
 	const APARTMENT_ID = 'lyr-apartment';
 	const RENT_ID = 'lyr-rent';
+	const RENT_ERROR_ID = 'lyr-rent-error';
 	const LEASE_ID = 'lyr-lease';
+	const LEASE_ERROR_ID = 'lyr-lease-error';
 	const EMAIL_ID = 'lyr-email';
 	const EMAIL_ERROR_ID = 'lyr-email-error';
+	const FORM_ERROR_ID = 'lyr-form-error';
+	const OTP_LABEL_ID = 'lyr-otp-label';
+	const OTP_ERROR_ID = 'lyr-otp-error';
 
 	// ─── Form state ───────────────────────────────────────────────────────────
 	let address = $state('');
@@ -47,7 +52,9 @@
 	let apartment = $state('');
 	let aptType = $state<AptType>('1br');
 	let rent = $state('');
+	let rentError = $state('');
 	let lease = $state('');
+	let leaseError = $state('');
 	let notes = $state('');
 	// Email — required. A 6-digit verification code is mailed here on submit.
 	let email = $state('');
@@ -117,6 +124,11 @@
 	const showOtp = $derived(
 		(phase === 'awaitingCode' || phase === 'verifying') && !verified
 	);
+
+	function describedBy(...ids: Array<string | false | null | undefined>) {
+		const value = ids.filter(Boolean).join(' ');
+		return value || undefined;
+	}
 
 	// ─── Cloudflare Turnstile (invisible bot check) ──────────────────────────
 	// Inert when PUBLIC_TURNSTILE_SITE_KEY is unset (local dev): the component
@@ -248,6 +260,9 @@ Thanks for considering.
 		copied = false;
 		codeError = '';
 		addressError = '';
+		rentError = '';
+		leaseError = '';
+		emailError = '';
 		formError = '';
 		otpResetKey += 1;
 	}
@@ -290,6 +305,13 @@ Thanks for considering.
 		};
 	}
 
+	function clearSubmissionErrors() {
+		addressError = '';
+		rentError = '';
+		leaseError = '';
+		formError = '';
+	}
+
 	function focusInvalidSubmissionField(path: string) {
 		if (path === 'address') expand('address');
 		else if (path === 'rentCents') expand('rent');
@@ -297,16 +319,33 @@ Thanks for considering.
 		else if (path === 'aptType') collapsed = { ...collapsed, aptType: false };
 	}
 
+	function focusEmailField() {
+		setTimeout(() => {
+			document.getElementById(EMAIL_ID)?.focus();
+		}, 0);
+	}
+
+	function setSubmissionError(path: string, message: string) {
+		clearSubmissionErrors();
+		if (path === 'address') addressError = message;
+		else if (path === 'rentCents') rentError = message;
+		else if (path === 'leaseExpiry') leaseError = message;
+		else formError = message;
+		focusInvalidSubmissionField(path);
+	}
+
 	function validateSubmissionForClient() {
 		const parsed = submissionSchema.safeParse(currentSubmissionPayload());
 		if (parsed.success) {
-			formError = '';
+			clearSubmissionErrors();
 			return true;
 		}
 
 		const first = parsed.error.issues[0];
-		formError = first?.message ?? 'Check your rent details and try again.';
-		focusInvalidSubmissionField(first?.path.join('.') ?? '');
+		setSubmissionError(
+			first?.path.join('.') ?? '',
+			first?.message ?? 'Check your rent details and try again.'
+		);
 		return false;
 	}
 
@@ -319,7 +358,10 @@ Thanks for considering.
 		if (!parsed.success) {
 			const msg = parsed.error.issues[0]?.message ?? 'Enter a valid email address.';
 			if (isResend) codeError = msg;
-			else emailError = msg;
+			else {
+				emailError = msg;
+				focusEmailField();
+			}
 			return;
 		}
 		emailError = '';
@@ -339,7 +381,10 @@ Thanks for considering.
 			if (!res.ok) {
 				const msg = sendErrorMessage(res.status);
 				if (isResend) codeError = msg;
-				else emailError = msg;
+				else {
+					emailError = msg;
+					focusEmailField();
+				}
 				return;
 			}
 			sentToEmail = parsed.data;
@@ -348,7 +393,10 @@ Thanks for considering.
 		} catch {
 			const msg = 'Network error — check your connection and try again.';
 			if (isResend) codeError = msg;
-			else emailError = msg;
+			else {
+				emailError = msg;
+				focusEmailField();
+			}
 		} finally {
 			sending = false;
 		}
@@ -357,8 +405,7 @@ Thanks for considering.
 	function onSubmit(e?: Event) {
 		e?.preventDefault();
 		if (phase !== 'form') return;
-		addressError = '';
-		formError = '';
+		clearSubmissionErrors();
 		if (!validateSubmissionForClient()) return;
 		void sendCode(false);
 	}
@@ -393,8 +440,10 @@ Thanks for considering.
 			// form to fix it. The code is untouched (checked before the code).
 			if (res.status === 422 && data?.error === 'address_not_found') {
 				phase = 'form';
-				addressError = "We couldn't find that address — double-check it and try again.";
-				expand('address');
+				setSubmissionError(
+					'address',
+					"We couldn't find that address — double-check it and try again."
+				);
 				return;
 			}
 
@@ -406,14 +455,13 @@ Thanks for considering.
 			) {
 				phase = 'form';
 				const issue = Array.isArray(data?.issues) ? data.issues[0] : null;
-				formError =
+				const message =
 					typeof issue?.message === 'string'
 						? issue.message
 						: data?.error === 'unsupported_zip'
 							? "We don't have market data for that ZIP yet."
 							: "We couldn't resolve that address — include city, state, and ZIP.";
-				if (typeof issue?.path === 'string') focusInvalidSubmissionField(issue.path);
-				else expand('address');
+				setSubmissionError(typeof issue?.path === 'string' ? issue.path : 'address', message);
 				return;
 			}
 
@@ -537,7 +585,7 @@ Thanks for considering.
 						placeholder="123 Main St, Brooklyn NY"
 						value={address}
 						ariaInvalid={!!addressError}
-						ariaDescribedby={addressError ? ADDRESS_ERROR_ID : undefined}
+						ariaDescribedby={describedBy(addressError && ADDRESS_ERROR_ID)}
 						ariaErrormessage={addressError ? ADDRESS_ERROR_ID : undefined}
 						onValue={(v) => {
 							address = v;
@@ -682,6 +730,8 @@ Thanks for considering.
 				collapsed={collapsed.rent}
 				summary={rentDisplay}
 				onEdit={() => expand('rent')}
+				error={rentError}
+				errorId={RENT_ERROR_ID}
 			>
 				<div
 					onfocusout={() => {
@@ -696,8 +746,12 @@ Thanks for considering.
 						placeholder="2,500"
 						prefix="$"
 						value={rent}
+						ariaInvalid={!!rentError}
+						ariaDescribedby={describedBy(rentError && RENT_ERROR_ID)}
+						ariaErrormessage={rentError ? RENT_ERROR_ID : undefined}
 						onValue={(v) => {
 							rent = v.replace(/[^\d,]/g, '');
+							rentError = '';
 							formError = '';
 						}}
 					/>
@@ -710,6 +764,8 @@ Thanks for considering.
 				collapsed={collapsed.lease}
 				summary={leaseDisplay}
 				onEdit={() => expand('lease')}
+				error={leaseError}
+				errorId={LEASE_ERROR_ID}
 			>
 				<div
 					onfocusout={() => {
@@ -722,8 +778,12 @@ Thanks for considering.
 						name="lease"
 						type="date"
 						value={lease}
+						ariaInvalid={!!leaseError}
+						ariaDescribedby={describedBy(leaseError && LEASE_ERROR_ID)}
+						ariaErrormessage={leaseError ? LEASE_ERROR_ID : undefined}
 						onValue={(v) => {
 							lease = v;
+							leaseError = '';
 							formError = '';
 							if (v) setTimeout(() => collapse('lease'), 180);
 						}}
@@ -758,7 +818,7 @@ Thanks for considering.
 				placeholder="you@example.com"
 				value={email}
 				ariaInvalid={!!emailError}
-				ariaDescribedby={emailError ? EMAIL_ERROR_ID : undefined}
+				ariaDescribedby={describedBy(emailError && EMAIL_ERROR_ID)}
 				ariaErrormessage={emailError ? EMAIL_ERROR_ID : undefined}
 				onValue={(v) => {
 					email = v;
@@ -768,6 +828,9 @@ Thanks for considering.
 			{#if emailError}
 				<span
 					id={EMAIL_ERROR_ID}
+					role="alert"
+					aria-live="assertive"
+					aria-atomic="true"
 					style="font-family: var(--font-sans); font-size: 12px; color: rgba(192,57,43,0.92); padding-left: 2px;"
 				>
 					{emailError}
@@ -944,6 +1007,10 @@ Thanks for considering.
 				</PrimaryButton>
 				{#if formError}
 					<div
+						id={FORM_ERROR_ID}
+						role="alert"
+						aria-live="assertive"
+						aria-atomic="true"
 						class="text-center"
 						style="font-family: var(--font-sans); font-size: 12px; line-height: 1.45; color: rgba(192,57,43,0.92);"
 					>
@@ -982,6 +1049,7 @@ Thanks for considering.
 		>
 			<div class="flex flex-col" style="gap: 12px;">
 				<div
+					id={OTP_LABEL_ID}
 					style="font-family: var(--font-sans); font-size: 13px; line-height: 1.5; color: rgba(30,30,40,0.65);"
 				>
 					Enter the 6-digit code sent to
@@ -991,10 +1059,17 @@ Thanks for considering.
 					onComplete={onVerify}
 					disabled={phase === 'verifying'}
 					error={!!codeError}
+					ariaLabelledby={OTP_LABEL_ID}
+					ariaDescribedby={codeError ? OTP_ERROR_ID : undefined}
+					ariaErrormessage={codeError ? OTP_ERROR_ID : undefined}
 					resetKey={otpResetKey}
 				/>
 				{#if codeError}
 					<span
+						id={OTP_ERROR_ID}
+						role="alert"
+						aria-live="assertive"
+						aria-atomic="true"
 						style="font-family: var(--font-sans); font-size: 12px; color: rgba(192,57,43,0.92); padding-left: 2px;"
 					>
 						{codeError}

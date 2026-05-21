@@ -23,6 +23,7 @@
 		$props();
 
 	const ease = 'cubic-bezier(0.32,0.72,0,1)';
+	const renderedErrorId = $derived(errorId ?? (inputId ? `${inputId}-error` : undefined));
 </script>
 
 <div class="relative">
@@ -149,7 +150,10 @@
 					</div>
 				{/if}
 				{#if error}
-					<div id={errorId} style="font-family: var(--font-sans); font-size: 12px; color: #B42318;">
+					<div
+						id={renderedErrorId}
+						style="font-family: var(--font-sans); font-size: 12px; color: #B42318;"
+					>
 						{error}
 					</div>
 				{/if}
