@@ -8,11 +8,11 @@
 	// widget has no visible footprint here.
 
 	import { onMount } from 'svelte';
-	import { env as publicEnv } from '$env/dynamic/public';
+	import { PUBLIC_TURNSTILE_SITE_KEY } from '$env/static/public';
 
 	let { onToken }: { onToken: (token: string | null) => void } = $props();
 
-	const siteKey = publicEnv.PUBLIC_TURNSTILE_SITE_KEY ?? '';
+	const siteKey = PUBLIC_TURNSTILE_SITE_KEY;
 	const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
 
 	let container: HTMLDivElement | undefined = $state();

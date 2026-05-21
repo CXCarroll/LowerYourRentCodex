@@ -12,11 +12,15 @@
 		summary: string;
 		onEdit: () => void;
 		error?: string;
+		errorId?: string;
 		hint?: string;
+		hintId?: string;
+		inputId?: string;
 		children: Snippet;
 	}
 
-	const { label, collapsed, summary, onEdit, error, hint, children }: Props = $props();
+	const { label, collapsed, summary, onEdit, error, errorId, hint, hintId, inputId, children }: Props =
+		$props();
 
 	const ease = 'cubic-bezier(0.32,0.72,0,1)';
 </script>
@@ -41,6 +45,7 @@
 			<button
 				type="button"
 				onclick={onEdit}
+				aria-label={summary ? `Edit ${label}: ${summary}` : `Edit ${label}`}
 				class="w-full flex items-center bg-transparent border-0 cursor-pointer text-left"
 				style="padding: 2px 4px; gap: 12px;"
 			>
@@ -106,28 +111,45 @@
 			"
 		>
 			<div class="flex flex-col min-w-0" style="gap: 6px;">
-				<span
-					style="
-						font-family: var(--font-sans);
-						font-size: 11px;
-						font-weight: 600;
-						letter-spacing: 0.8px;
-						text-transform: uppercase;
-						color: rgba(30,30,40,0.55);
-					"
-				>
-					{label}
-				</span>
+				{#if inputId}
+					<label
+						for={inputId}
+						style="
+							font-family: var(--font-sans);
+							font-size: 11px;
+							font-weight: 600;
+							letter-spacing: 0.8px;
+							text-transform: uppercase;
+							color: rgba(30,30,40,0.55);
+						"
+					>
+						{label}
+					</label>
+				{:else}
+					<span
+						style="
+							font-family: var(--font-sans);
+							font-size: 11px;
+							font-weight: 600;
+							letter-spacing: 0.8px;
+							text-transform: uppercase;
+							color: rgba(30,30,40,0.55);
+						"
+					>
+						{label}
+					</span>
+				{/if}
 				{@render children()}
 				{#if hint && !error}
 					<div
+						id={hintId}
 						style="font-family: var(--font-sans); font-size: 12px; color: rgba(30,30,40,0.5); line-height: 1.45;"
 					>
 						{hint}
 					</div>
 				{/if}
 				{#if error}
-					<div style="font-family: var(--font-sans); font-size: 12px; color: #B42318;">
+					<div id={errorId} style="font-family: var(--font-sans); font-size: 12px; color: #B42318;">
 						{error}
 					</div>
 				{/if}

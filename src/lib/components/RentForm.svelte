@@ -17,7 +17,7 @@
 	import InvisibleInk from '$lib/components/InvisibleInk.svelte';
 	import OtpInput from '$lib/components/OtpInput.svelte';
 	import Turnstile from '$lib/components/Turnstile.svelte';
-	import { env as publicEnv } from '$env/dynamic/public';
+	import { PUBLIC_TURNSTILE_SITE_KEY } from '$env/static/public';
 	import { emailSchema, rentInputToCents, submissionSchema } from '$lib/shared/validation';
 	import type { AptType } from '$lib/shared/apt-types';
 	import { formatDollars, type NegotiationVersion } from '$lib/shared/email-template';
@@ -28,6 +28,13 @@
 		{ value: '2br', label: '2 BR' },
 		{ value: '3br', label: '3+ BR' }
 	];
+	const ADDRESS_ID = 'lyr-address';
+	const ADDRESS_ERROR_ID = 'lyr-address-error';
+	const APARTMENT_ID = 'lyr-apartment';
+	const RENT_ID = 'lyr-rent';
+	const LEASE_ID = 'lyr-lease';
+	const EMAIL_ID = 'lyr-email';
+	const EMAIL_ERROR_ID = 'lyr-email-error';
 
 	// ─── Form state ───────────────────────────────────────────────────────────
 	let address = $state('');
@@ -115,7 +122,7 @@
 	// Inert when PUBLIC_TURNSTILE_SITE_KEY is unset (local dev): the component
 	// renders nothing and `turnstileToken` stays null, which the server treats
 	// as "check disabled" so the flow works unchanged.
-	const turnstileEnabled = !!publicEnv.PUBLIC_TURNSTILE_SITE_KEY;
+	const turnstileEnabled = !!PUBLIC_TURNSTILE_SITE_KEY;
 	let turnstileToken = $state<string | null>(null);
 	// Turnstile tokens are single-use. Bumping this key remounts the widget so
 	// a resend / second submit gets a fresh, unconsumed token.
@@ -511,10 +518,12 @@ Thanks for considering.
 		<div class="grid" style="grid-template-columns: minmax(0,3fr) minmax(0,1fr); gap: 12px;">
 			<CollapsibleField
 				label="Address"
+				inputId={ADDRESS_ID}
 				collapsed={collapsed.address}
 				summary={address}
 				onEdit={() => expand('address')}
 				error={addressError}
+				errorId={ADDRESS_ERROR_ID}
 			>
 				<div
 					onfocusout={() => {
@@ -523,11 +532,13 @@ Thanks for considering.
 					role="presentation"
 				>
 					<AddressAutocomplete
-						id="lyr-address"
+						id={ADDRESS_ID}
 						name="address"
 						placeholder="123 Main St, Brooklyn NY"
 						value={address}
 						ariaInvalid={!!addressError}
+						ariaDescribedby={addressError ? ADDRESS_ERROR_ID : undefined}
+						ariaErrormessage={addressError ? ADDRESS_ERROR_ID : undefined}
 						onValue={(v) => {
 							address = v;
 							addressError = '';
@@ -561,6 +572,7 @@ Thanks for considering.
 						<button
 							type="button"
 							onclick={() => expand('apartment')}
+							aria-label={apartment ? `Edit Apartment: ${apartment}` : 'Edit Apartment'}
 							class="w-full flex items-center justify-end bg-transparent border-0 cursor-pointer"
 							style="padding: 2px 4px; gap: 8px;"
 						>
@@ -618,7 +630,8 @@ Thanks for considering.
 							onfocusout={() => collapse('apartment')}
 							role="presentation"
 						>
-							<span
+							<label
+								for={APARTMENT_ID}
 								style="
 									font-family: var(--font-sans);
 									font-size: 11px;
@@ -629,9 +642,9 @@ Thanks for considering.
 								"
 							>
 								Apartment
-							</span>
+							</label>
 							<GlassInput
-								id="lyr-apartment"
+								id={APARTMENT_ID}
 								name="apartment"
 								autocomplete="address-line2"
 								placeholder="4B"
@@ -665,6 +678,7 @@ Thanks for considering.
 		<div class="grid" style="grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px;">
 			<CollapsibleField
 				label="Current rent"
+				inputId={RENT_ID}
 				collapsed={collapsed.rent}
 				summary={rentDisplay}
 				onEdit={() => expand('rent')}
@@ -676,7 +690,7 @@ Thanks for considering.
 					role="presentation"
 				>
 					<GlassInput
-						id="lyr-rent"
+						id={RENT_ID}
 						name="rent"
 						inputmode="decimal"
 						placeholder="2,500"
@@ -692,6 +706,7 @@ Thanks for considering.
 
 			<CollapsibleField
 				label="Lease ends"
+				inputId={LEASE_ID}
 				collapsed={collapsed.lease}
 				summary={leaseDisplay}
 				onEdit={() => expand('lease')}
@@ -703,7 +718,7 @@ Thanks for considering.
 					role="presentation"
 				>
 					<GlassInput
-						id="lyr-lease"
+						id={LEASE_ID}
 						name="lease"
 						type="date"
 						value={lease}
@@ -721,7 +736,8 @@ Thanks for considering.
 		     submit. Plain labelled input (not collapsible): it stays visible
 		     and editable through the code-entry step. -->
 		<div class="flex flex-col min-w-0" style="gap: 6px;">
-			<span
+			<label
+				for={EMAIL_ID}
 				style="
 					font-family: var(--font-sans);
 					font-size: 11px;
@@ -732,9 +748,9 @@ Thanks for considering.
 				"
 			>
 				Email
-			</span>
+			</label>
 			<GlassInput
-				id="lyr-email"
+				id={EMAIL_ID}
 				name="email"
 				type="email"
 				inputmode="email"
@@ -742,6 +758,8 @@ Thanks for considering.
 				placeholder="you@example.com"
 				value={email}
 				ariaInvalid={!!emailError}
+				ariaDescribedby={emailError ? EMAIL_ERROR_ID : undefined}
+				ariaErrormessage={emailError ? EMAIL_ERROR_ID : undefined}
 				onValue={(v) => {
 					email = v;
 					emailError = '';
@@ -749,6 +767,7 @@ Thanks for considering.
 			/>
 			{#if emailError}
 				<span
+					id={EMAIL_ERROR_ID}
 					style="font-family: var(--font-sans); font-size: 12px; color: rgba(192,57,43,0.92); padding-left: 2px;"
 				>
 					{emailError}

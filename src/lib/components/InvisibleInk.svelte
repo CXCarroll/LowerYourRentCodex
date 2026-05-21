@@ -21,6 +21,7 @@
 		value: string;
 		onChange: (v: string) => void;
 		placeholder?: string;
+		ariaLabel?: string;
 		/** Px height of the field. Tweens smoothly when the parent recomputes it. */
 		height?: number;
 		/** Flip true to end the particle animation and reveal the textarea. */
@@ -31,6 +32,7 @@
 		value,
 		onChange,
 		placeholder = '',
+		ariaLabel = 'Rent negotiation draft',
 		height = 220,
 		dissolved = false
 	}: Props = $props();
@@ -43,7 +45,6 @@
 	let wrapEl: HTMLDivElement | undefined = $state();
 	let canvasEl: HTMLCanvasElement | undefined = $state();
 
-	let revealed = $state(false);
 	let focused = $state(false);
 
 	// The rAF tick reads `dissolved` via a plain ref-style variable so we
@@ -53,27 +54,12 @@
 		dissolvedRef = dissolved;
 	});
 
-	let hideTimer: ReturnType<typeof setTimeout> | null = null;
-
-	function reveal() {
-		if (dissolved) return;
-		revealed = true;
-		if (hideTimer) clearTimeout(hideTimer);
-		hideTimer = setTimeout(() => (revealed = false), 3500);
-	}
-
-	$effect(() => {
-		return () => {
-			if (hideTimer) clearTimeout(hideTimer);
-		};
-	});
-
 	// Particle simulation. Mounts once; never restarts when reactive state
 	// changes — the loop reads from `dissolvedRef` and the latest reveal
 	// target via the closure-captured `targetReveal` setter below.
 	let targetReveal = 0;
 	$effect(() => {
-		targetReveal = dissolved ? 0 : revealed || focused ? 1 : 0;
+		targetReveal = dissolved ? 0 : focused ? 1 : 0;
 	});
 
 	$effect(() => {
@@ -285,18 +271,12 @@
 	});
 
 	const isEmpty = $derived(!value);
-	const showText = $derived(dissolved || revealed || focused);
+	const showText = $derived(dissolved || focused);
 </script>
 
 <div
 	bind:this={wrapEl}
 	class="invisible-ink-shell"
-	onclick={reveal}
-	onkeydown={(e) => {
-		if (e.key === 'Enter' || e.key === ' ') reveal();
-	}}
-	role="button"
-	tabindex="-1"
 	style="
 		position: relative;
 		height: {height}px;
@@ -317,6 +297,7 @@
 		oninput={(e) => onChange((e.target as HTMLTextAreaElement).value)}
 		onfocus={() => (focused = true)}
 		onblur={() => (focused = false)}
+		aria-label={ariaLabel}
 		spellcheck="false"
 		style="
 			position: absolute; inset: 0;

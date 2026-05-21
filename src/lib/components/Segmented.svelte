@@ -60,7 +60,7 @@
 				font-family: var(--font-sans);
 				font-size: {fontSize}px;
 				font-weight: 600;
-				color: {o.value === value ? 'var(--ink)' : 'rgba(30,30,40,0.55)'};
+				color: {o.value === value ? 'var(--ink)' : 'rgba(30,30,40,0.72)'};
 				letter-spacing: -0.1px;
 				transition: color 180ms;
 				padding: 0 {buttonPad}px;

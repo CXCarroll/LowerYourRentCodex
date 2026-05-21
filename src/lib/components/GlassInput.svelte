@@ -13,6 +13,9 @@
 		id?: string;
 		name?: string;
 		ariaInvalid?: boolean;
+		ariaLabelledby?: string;
+		ariaDescribedby?: string;
+		ariaErrormessage?: string;
 		inputFontSize?: number;
 		/** Optional bindable ref to the native <input> for callers that need
 		 *  direct DOM access (e.g. caret control). Most callers can ignore it. */
@@ -30,6 +33,9 @@
 		id,
 		name,
 		ariaInvalid,
+		ariaLabelledby,
+		ariaDescribedby,
+		ariaErrormessage,
 		inputFontSize,
 		inputRef = $bindable()
 	}: Props = $props();
@@ -71,6 +77,9 @@
 		autocomplete={autocomplete as never}
 		{value}
 		aria-invalid={ariaInvalid ? 'true' : undefined}
+		aria-labelledby={ariaLabelledby}
+		aria-describedby={ariaDescribedby}
+		aria-errormessage={ariaErrormessage}
 		oninput={(e) => onValue((e.target as HTMLInputElement).value)}
 		onfocus={() => (focus = true)}
 		onblur={() => (focus = false)}

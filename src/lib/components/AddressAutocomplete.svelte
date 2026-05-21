@@ -18,9 +18,22 @@
 		name?: string;
 		placeholder?: string;
 		ariaInvalid?: boolean;
+		ariaLabelledby?: string;
+		ariaDescribedby?: string;
+		ariaErrormessage?: string;
 	}
 
-	const { value, onValue, id, name, placeholder, ariaInvalid }: Props = $props();
+	const {
+		value,
+		onValue,
+		id,
+		name,
+		placeholder,
+		ariaInvalid,
+		ariaLabelledby,
+		ariaDescribedby,
+		ariaErrormessage
+	}: Props = $props();
 
 	const LISTBOX_ID = `lyr-addr-list-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -174,6 +187,7 @@
 		aria-expanded={open}
 		aria-controls={LISTBOX_ID}
 		aria-haspopup="listbox"
+		aria-labelledby={ariaLabelledby}
 		tabindex="-1"
 	>
 		<GlassInput
@@ -182,6 +196,9 @@
 			{value}
 			{placeholder}
 			{ariaInvalid}
+			{ariaLabelledby}
+			{ariaDescribedby}
+			{ariaErrormessage}
 			autocomplete="street-address"
 			onValue={handleValue}
 		/>

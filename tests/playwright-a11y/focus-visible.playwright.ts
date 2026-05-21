@@ -1,12 +1,19 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-const routes = ['/', '/search', '/learn', '/admin/login'];
+const publicRoutes = ['/', '/search', '/learn'];
+
+async function gotoOk(page: Page, route: string) {
+	const response = await page.goto(route);
+	expect(response?.ok(), `${route} should return a successful response`).toBe(true);
+}
 
 test.describe('accessibility smoke coverage', () => {
-	for (const route of routes) {
+	test.describe.configure({ mode: 'serial' });
+
+	for (const route of publicRoutes) {
 		test(`${route} has no detectable axe violations`, async ({ page }) => {
-			await page.goto(route);
+			await gotoOk(page, route);
 			await expect(page.locator('body')).toBeVisible();
 
 			const accessibilityScanResults = await new AxeBuilder({ page })
@@ -14,11 +21,19 @@ test.describe('accessibility smoke coverage', () => {
 				.analyze();
 
 			expect(accessibilityScanResults.violations).toEqual([]);
+
+			if (route === '/') {
+				await expect(page.locator('#lyr-address')).toHaveAccessibleName('Address');
+				await expect(page.locator('#lyr-apartment')).toHaveAccessibleName('Apartment');
+				await expect(page.locator('#lyr-rent')).toHaveAccessibleName('Current rent');
+				await expect(page.locator('#lyr-lease')).toHaveAccessibleName('Lease ends');
+				await expect(page.locator('#lyr-email')).toHaveAccessibleName('Email');
+			}
 		});
 	}
 
 	test('keyboard traversal exposes a visible focus indicator on the homepage', async ({ page }) => {
-		await page.goto('/');
+		await gotoOk(page, '/');
 
 		const focusedIndicators: string[] = [];
 		for (let i = 0; i < 12; i += 1) {
@@ -50,5 +65,16 @@ test.describe('accessibility smoke coverage', () => {
 		}
 
 		expect(focusedIndicators.length).toBeGreaterThan(0);
+	});
+
+	test('/admin/login has no detectable axe violations', async ({ page }) => {
+		await gotoOk(page, '/admin/login');
+		await expect(page.locator('body')).toBeVisible();
+
+		const accessibilityScanResults = await new AxeBuilder({ page })
+			.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+			.analyze();
+
+		expect(accessibilityScanResults.violations).toEqual([]);
 	});
 });
