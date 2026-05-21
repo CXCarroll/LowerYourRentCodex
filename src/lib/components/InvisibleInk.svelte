@@ -290,6 +290,7 @@
 
 <div
 	bind:this={wrapEl}
+	class="invisible-ink-shell"
 	onclick={reveal}
 	onkeydown={(e) => {
 		if (e.key === 'Enter' || e.key === ' ') reveal();
@@ -321,7 +322,7 @@
 			position: absolute; inset: 0;
 			width: 100%; height: 100%;
 			padding: {PADY}px {PADX}px;
-			border: none; outline: none; background: transparent; resize: none;
+			border: none; background: transparent; resize: none;
 			font-family: var(--font-sans);
 			font-size: {FONT_SIZE}px;
 			line-height: {LINE_H}px;

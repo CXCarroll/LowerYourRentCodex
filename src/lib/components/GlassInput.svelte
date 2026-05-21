@@ -40,7 +40,7 @@
 </script>
 
 <div
-	class="relative flex items-center min-w-0"
+	class="glass-input-shell relative flex items-center min-w-0"
 	style="
 		height: 52px;
 		border-radius: 16px;
@@ -74,7 +74,7 @@
 		oninput={(e) => onValue((e.target as HTMLInputElement).value)}
 		onfocus={() => (focus = true)}
 		onblur={() => (focus = false)}
-		class="flex-1 min-w-0 w-full h-full border-0 outline-0"
+		class="flex-1 min-w-0 w-full h-full border-0"
 		style="
 			padding: {prefix ? '0 10px 0 0' : isDate ? '0 8px' : '0 18px'};
 			background: transparent;

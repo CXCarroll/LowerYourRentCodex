@@ -93,7 +93,7 @@
 			onpaste={onPaste}
 			onfocus={() => (focused = i)}
 			onblur={() => (focused = -1)}
-			class="min-w-0 text-center"
+			class="lyr-otp-input min-w-0 text-center"
 			style="
 				flex: 1;
 				height: 56px;
@@ -113,7 +113,6 @@
 				font-size: 22px;
 				font-weight: 600;
 				color: var(--ink);
-				outline: 0;
 				transition: all 180ms ease;
 				opacity: {disabled ? 0.55 : 1};
 			"

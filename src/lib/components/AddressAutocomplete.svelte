@@ -242,7 +242,7 @@
 							select(i);
 						}}
 						onmouseenter={() => (highlighted = i)}
-						class="w-full text-left"
+						class="address-suggestion-button w-full text-left"
 						style="
 							display: block;
 							min-height: 44px;

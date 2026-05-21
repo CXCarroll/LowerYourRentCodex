@@ -32,7 +32,7 @@
 		<a href="/admin" class="flex items-center gap-2">
 			<span class="inline-block h-3 w-3 rounded-full bg-brand-500"></span>
 			<span class="text-lg font-semibold tracking-tight text-slate-900"
-				>Lower Your Rent <span class="text-slate-400">· admin</span></span
+				>Lower Your Rent <span class="text-slate-600">· admin</span></span
 			>
 		</a>
 		{#if data.loggedIn}

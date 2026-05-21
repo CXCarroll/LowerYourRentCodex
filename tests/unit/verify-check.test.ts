@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 
 type VerifyResult =
 	| { ok: true }
@@ -12,6 +12,7 @@ const callOrder: string[] = [];
 
 const tx = {};
 const transaction = mock(async (callback: (tx: unknown) => Promise<unknown>) => callback(tx));
+const consumeRateLimit = mock(async () => ({ ok: true, retryAfterSec: 0 }));
 const consumeVerifiedCodeTx = mock(async () => {
 	callOrder.push('consume');
 	return verifyResult;
@@ -35,10 +36,15 @@ const buildNegotiationEmail = mock(async () => {
 	callOrder.push('build');
 	return { versions: [{ body: 'Generated email', reductionCents: 10_000 }] };
 });
+const timingLog = mock((message?: unknown) => {
+	void message;
+});
+const originalConsoleInfo = console.info;
+console.info = timingLog as unknown as typeof console.info;
 
 mock.module('$lib/server/db/client', () => ({ db: { transaction } }));
 mock.module('$lib/server/rate-limit', () => ({
-	consumeRateLimit: async () => ({ ok: true, retryAfterSec: 0 }),
+	consumeRateLimit,
 	getClientIp: () => '127.0.0.1'
 }));
 mock.module('$lib/server/email-verification', () => ({ consumeVerifiedCodeTx }));
@@ -50,6 +56,11 @@ mock.module('$lib/server/negotiation-email', () => ({ buildNegotiationEmail }));
 mock.module('$lib/server/env', () => ({ env: { MAPBOX_TOKEN: undefined } }));
 
 const { POST } = await import('../../src/routes/api/verify/check/+server');
+
+afterAll(() => {
+	console.info = originalConsoleInfo;
+	mock.restore();
+});
 
 function request(body: Record<string, unknown>) {
 	return new Request('http://localhost/api/verify/check', {
@@ -78,6 +89,7 @@ function validPayload(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
 	verifyResult = { ok: true };
 	callOrder.length = 0;
+	consumeRateLimit.mockClear();
 	transaction.mockClear();
 	consumeVerifiedCodeTx.mockClear();
 	verifyAddressExists.mockClear();
@@ -85,9 +97,72 @@ beforeEach(() => {
 	lookupZip.mockClear();
 	insertSubmissionUnlessRecentDuplicateTx.mockClear();
 	buildNegotiationEmail.mockClear();
+	timingLog.mockClear();
 });
 
 describe('/api/verify/check', () => {
+	test('adds Server-Timing and structured timing logs on success', async () => {
+		const res = await post(validPayload({ address: '123 Main St Apt 4B, Brooklyn, NY' }));
+		await res.json();
+
+		const serverTiming = res.headers.get('Server-Timing');
+		expect(serverTiming).toContain('rate_limit;dur=');
+		expect(serverTiming).toContain('payload_validation;dur=');
+		expect(serverTiming).toContain('address_verification;dur=');
+		expect(serverTiming).toContain('geocode;dur=');
+		expect(serverTiming).toContain('zip_lookup;dur=');
+		expect(serverTiming).toContain('negotiation_email_generation;dur=');
+		expect(serverTiming).toContain('otp_transaction;dur=');
+		expect(serverTiming).toContain('response_serialization;dur=');
+		expect(geocodeAddressToZip).toHaveBeenCalled();
+
+		expect(timingLog).toHaveBeenCalledTimes(1);
+		const entry = JSON.parse(String(timingLog.mock.calls[0][0])) as {
+			event: string;
+			route: string;
+			method: string;
+			status: number;
+			error?: string;
+			timings_ms: Record<string, number>;
+			total_ms: number;
+			email?: string;
+			address?: string;
+		};
+		expect(entry.event).toBe('verify_check_timing');
+		expect(entry.route).toBe('/api/verify/check');
+		expect(entry.method).toBe('POST');
+		expect(entry.status).toBe(200);
+		expect(entry.error).toBeUndefined();
+		expect(entry.email).toBeUndefined();
+		expect(entry.address).toBeUndefined();
+		expect(entry.timings_ms.rate_limit).toEqual(expect.any(Number));
+		expect(entry.timings_ms.response_serialization).toEqual(expect.any(Number));
+		expect(entry.total_ms).toEqual(expect.any(Number));
+	});
+
+	test('adds timing headers and logs on validation failures', async () => {
+		const res = await post(validPayload({ aptType: 'penthouse', rentCents: undefined }));
+		const body = await res.json();
+
+		expect(res.status).toBe(422);
+		expect(body.error).toBe('invalid_submission');
+		const serverTiming = res.headers.get('Server-Timing');
+		expect(serverTiming).toContain('rate_limit;dur=');
+		expect(serverTiming).toContain('payload_validation;dur=');
+		expect(serverTiming).toContain('response_serialization;dur=');
+		expect(serverTiming).not.toContain('address_verification;dur=');
+
+		expect(timingLog).toHaveBeenCalledTimes(1);
+		const entry = JSON.parse(String(timingLog.mock.calls[0][0])) as {
+			status: number;
+			error?: string;
+			timings_ms: Record<string, number>;
+		};
+		expect(entry.status).toBe(422);
+		expect(entry.error).toBe('invalid_submission');
+		expect(entry.timings_ms.payload_validation).toEqual(expect.any(Number));
+	});
+
 	test('rejects invalid submission fields before consuming the code', async () => {
 		const res = await post(validPayload({ aptType: 'penthouse', rentCents: undefined }));
 		const body = await res.json();
