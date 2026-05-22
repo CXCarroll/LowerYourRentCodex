@@ -286,6 +286,28 @@ input[type='date'] {
 	animation: lyr-fade-in 300ms ease-out both;
 }
 
+@media (prefers-reduced-motion: reduce) {
+	html:focus-within {
+		scroll-behavior: auto;
+	}
+
+	.lyr-motion,
+	.primary-nav-link,
+	.glass-pill,
+	.btn-primary,
+	.field-input,
+	.lyr-otp-input {
+		transition: none !important;
+		transition-delay: 0ms !important;
+	}
+
+	.lyr-backdrop-orb,
+	.lyr-spinner,
+	.lyr-enter {
+		animation: none !important;
+	}
+}
+
 /* ─────────────────────────────────────────────────────────────
    Legacy .card / .field-input / .btn-* retained for the /admin tree.
    These use the legacy --color-* tokens so the admin area is unchanged.

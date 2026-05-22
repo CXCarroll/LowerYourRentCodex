@@ -18,6 +18,8 @@ Manual release checks:
 
 - Use axe DevTools on the landing/search flow, address autocomplete, email verification/OTP flow, learn pages, and admin login.
 - Use WAVE for quick visual inspection of focus order, color contrast, form labels, and landmark structure.
+- Repeat the landing, navigation, OTP, and generated-email checks with the OS/browser set to Reduce Motion, then again with the default motion preference.
+- With Reduce Motion enabled, confirm the background orbs are static, loading indicators do not spin, route changes do not slide, the invisible-ink field has no particle loop, and generated emails/version swaps appear immediately.
 - Test keyboard-only navigation with Tab, Shift+Tab, Enter, Space, Escape, and arrow keys where relevant.
 - Confirm focus is always visible, not clipped, and not obscured by dropdowns, rounded containers, or animated fields.
 - Test VoiceOver on macOS with Safari or Chrome.

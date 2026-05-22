@@ -57,7 +57,7 @@
 >
 	{#each p.orbs as orb, i (i)}
 		<div
-			class="absolute rounded-full"
+			class="lyr-backdrop-orb absolute rounded-full"
 			style="
 				width: {orb.s}px;
 				height: {orb.s}px;

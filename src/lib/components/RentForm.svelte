@@ -18,6 +18,7 @@
 	import OtpInput from '$lib/components/OtpInput.svelte';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import { PUBLIC_TURNSTILE_SITE_KEY } from '$env/static/public';
+	import { reducedMotion } from '$lib/stores/motion.svelte';
 	import { emailSchema, rentInputToCents, submissionSchema } from '$lib/shared/validation';
 	import type { AptType } from '$lib/shared/apt-types';
 	import { formatDollars, type NegotiationVersion } from '$lib/shared/email-template';
@@ -84,7 +85,7 @@
 		// Refocus the input after the expand transition (~160ms slot fade + buffer).
 		setTimeout(() => {
 			document.getElementById(`lyr-${key}`)?.focus();
-		}, 220);
+		}, reducedMotion.enabled ? 0 : 220);
 	}
 
 	// ─── Field validity ──────────────────────────────────────────────────────
@@ -214,6 +215,13 @@ Thanks for considering.
 		}
 
 		activeIndex = i; // pill slides immediately
+		if (reducedMotion.enabled) {
+			if (swapTimer) clearTimeout(swapTimer);
+			notes = versions[i].body;
+			swapping = false;
+			return;
+		}
+
 		swapping = true; // wrapper fades out
 		if (swapTimer) clearTimeout(swapTimer);
 		swapTimer = setTimeout(() => {
@@ -227,6 +235,23 @@ Thanks for considering.
 		return () => {
 			if (typingTimer) clearInterval(typingTimer);
 		};
+	});
+
+	$effect(() => {
+		if (!reducedMotion.enabled || !verified) return;
+
+		if (typingTimer) {
+			clearInterval(typingTimer);
+			typingTimer = null;
+		}
+		if (swapTimer) {
+			clearTimeout(swapTimer);
+			swapTimer = null;
+		}
+
+		const activeBody = versions[activeIndex]?.body;
+		if (activeBody) notes = activeBody;
+		swapping = false;
 	});
 
 	// "Edit info" — drop the verified state and the generated email, returning
@@ -493,13 +518,20 @@ Thanks for considering.
 
 		// Typewriter reveal of the first variation.
 		const body = versions[0].body;
+		if (typingTimer) {
+			clearInterval(typingTimer);
+			typingTimer = null;
+		}
+		if (reducedMotion.enabled) {
+			notes = body;
+			return;
+		}
 		const TOTAL_MS = 6400;
 		const TICK = 18;
 		const ticks = Math.max(1, Math.floor(TOTAL_MS / TICK));
 		const perTick = Math.max(1, Math.ceil(body.length / ticks));
 		let i = 0;
 		setTimeout(() => {
-			if (typingTimer) clearInterval(typingTimer);
 			typingTimer = setInterval(() => {
 				i = Math.min(body.length, i + perTick);
 				notes = body.slice(0, i);
@@ -538,7 +570,7 @@ Thanks for considering.
 	     a grid-rows tween so the whole stack collapses to 0fr after submit;
 	     an "Edit info" button replaces it (see sibling block below). -->
 	<div
-		class="grid"
+		class="lyr-motion grid"
 		style="
 			grid-template-rows: {infoMerged ? '0fr' : '1fr'};
 			margin-bottom: {infoMerged ? '0px' : '18px'};
@@ -548,7 +580,7 @@ Thanks for considering.
 		"
 	>
 	<div
-		class="overflow-hidden"
+		class="lyr-motion overflow-hidden"
 		style="
 			opacity: {infoMerged ? 0 : 1};
 			transition: opacity 240ms ease;
@@ -556,7 +588,7 @@ Thanks for considering.
 		"
 	>
 	<div
-		class="flex flex-col"
+		class="lyr-motion flex flex-col"
 		style="
 			gap: {fieldGap}px;
 			transition: gap 320ms cubic-bezier(0.32,0.72,0,1);
@@ -603,14 +635,14 @@ Thanks for considering.
 			<div class="relative">
 				<!-- Collapsed summary -->
 				<div
-					class="grid"
+					class="lyr-motion grid"
 					style="
 						grid-template-rows: {collapsed.apartment ? '1fr' : '0fr'};
 						transition: grid-template-rows 340ms cubic-bezier(0.32,0.72,0,1);
 					"
 				>
 					<div
-						class="overflow-hidden"
+						class="lyr-motion overflow-hidden"
 						style="
 							opacity: {collapsed.apartment ? 1 : 0};
 							transition: opacity 200ms ease;
@@ -658,14 +690,14 @@ Thanks for considering.
 
 				<!-- Expanded input -->
 				<div
-					class="grid"
+					class="lyr-motion grid"
 					style="
 						grid-template-rows: {collapsed.apartment ? '0fr' : '1fr'};
 						transition: grid-template-rows 340ms cubic-bezier(0.32,0.72,0,1);
 					"
 				>
 					<div
-						class="overflow-hidden"
+						class="lyr-motion overflow-hidden"
 						style="
 							opacity: {collapsed.apartment ? 0 : 1};
 							transition: opacity 200ms ease;
@@ -719,7 +751,7 @@ Thanks for considering.
 				onSelect={(v) => {
 					aptType = v;
 					formError = '';
-					setTimeout(() => collapse('aptType'), 340);
+					setTimeout(() => collapse('aptType'), reducedMotion.enabled ? 0 : 340);
 				}}
 			/>
 		</CollapsibleField>
@@ -787,7 +819,7 @@ Thanks for considering.
 							lease = v;
 							leaseError = '';
 							formError = '';
-							if (v) setTimeout(() => collapse('lease'), 180);
+							if (v) setTimeout(() => collapse('lease'), reducedMotion.enabled ? 0 : 180);
 						}}
 					/>
 				</div>
@@ -849,7 +881,7 @@ Thanks for considering.
 	     so the negotiation email is regenerated. The button reappears after the
 	     next successful verify. -->
 	<div
-		class="grid"
+		class="lyr-motion grid"
 		style="
 			grid-template-rows: {infoMerged ? '1fr' : '0fr'};
 			margin-bottom: {infoMerged ? '18px' : '0px'};
@@ -859,7 +891,7 @@ Thanks for considering.
 		"
 	>
 		<div
-			class="overflow-hidden"
+			class="lyr-motion overflow-hidden"
 			style="
 				opacity: {infoMerged ? 1 : 0};
 				transition: opacity 240ms ease;
@@ -903,7 +935,7 @@ Thanks for considering.
 					<button
 						type="button"
 						onclick={onCopy}
-						class="flex-shrink-0 flex items-center justify-center cursor-pointer"
+						class="lyr-motion flex-shrink-0 flex items-center justify-center cursor-pointer"
 						style="
 							gap: 6px;
 							padding: 0 14px;
@@ -975,7 +1007,7 @@ Thanks for considering.
 	<!-- Submit row — animated grid-rows + margin out once the flow leaves the
 	     'form' step (code sent / verifying / verified). -->
 	<div
-		class="grid"
+		class="lyr-motion grid"
 		style="
 			grid-template-rows: {phase !== 'form' ? '0fr' : '1fr'};
 			margin-bottom: {phase !== 'form' ? '0px' : '18px'};
@@ -985,7 +1017,7 @@ Thanks for considering.
 		"
 	>
 		<div
-			class="overflow-hidden"
+			class="lyr-motion overflow-hidden"
 			style="
 				opacity: {phase !== 'form' ? 0 : 1};
 				transition: opacity 220ms ease;
@@ -1034,7 +1066,7 @@ Thanks for considering.
 	<!-- Code entry — appears once a verification code is emailed, collapses
 	     away on a successful verify. -->
 	<div
-		class="grid"
+		class="lyr-motion grid"
 		style="
 			grid-template-rows: {showOtp ? '1fr' : '0fr'};
 			margin-bottom: {showOtp ? '18px' : '0px'};
@@ -1044,7 +1076,7 @@ Thanks for considering.
 		"
 	>
 		<div
-			class="overflow-hidden"
+			class="lyr-motion overflow-hidden"
 			style="
 				opacity: {showOtp ? 1 : 0};
 				transition: opacity 220ms ease;
@@ -1114,7 +1146,7 @@ Thanks for considering.
 	<!-- Wrapper handles the 150 ms fade-swap when the user picks a different
 	     version. The particle canvas keeps rendering underneath; only the
 	     composite opacity ramps to 0 and back. -->
-	<div style="opacity: {swapping ? 0 : 1}; transition: opacity 150ms ease;">
+	<div class="lyr-motion" style="opacity: {swapping ? 0 : 1}; transition: opacity 150ms ease;">
 		<InvisibleInk
 			value={notes}
 			onChange={(v) => (notes = v)}

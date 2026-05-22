@@ -213,6 +213,7 @@
 	{#if loading}
 		<div
 			aria-hidden="true"
+			class="lyr-spinner"
 			style="
 				position: absolute;
 				right: 14px;
@@ -268,7 +269,7 @@
 					}}
 					onclick={() => select(i)}
 					onmouseenter={() => (highlighted = i)}
-					class="address-suggestion-option w-full text-left"
+					class="address-suggestion-option lyr-motion w-full text-left"
 					style="
 						display: block;
 						min-height: 44px;

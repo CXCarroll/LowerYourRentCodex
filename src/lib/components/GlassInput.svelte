@@ -60,7 +60,7 @@
 </script>
 
 <div
-	class="glass-input-shell relative flex items-center min-w-0"
+	class="glass-input-shell lyr-motion relative flex items-center min-w-0"
 	style="
 		height: 52px;
 		border-radius: 16px;

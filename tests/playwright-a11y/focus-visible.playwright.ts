@@ -8,12 +8,34 @@ async function gotoOk(page: Page, route: string) {
 	expect(response?.ok(), `${route} should return a successful response`).toBe(true);
 }
 
-async function scanPage(page: Page) {
-	const accessibilityScanResults = await new AxeBuilder({ page })
-		.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
-		.analyze();
+async function scanPage(page: Page, disabledRules: string[] = []) {
+	let builder = new AxeBuilder({ page }).withTags([
+		'wcag2a',
+		'wcag2aa',
+		'wcag21a',
+		'wcag21aa',
+		'wcag22aa'
+	]);
+	for (const rule of disabledRules) builder = builder.disableRules([rule]);
+
+	const accessibilityScanResults = await builder.analyze();
 
 	expect(accessibilityScanResults.violations).toEqual([]);
+}
+
+async function expectNoRunningAnimation(page: Page, selector: string) {
+	await expect(page.locator(selector).first()).toBeAttached();
+	await expect
+		.poll(async () =>
+			page.locator(selector).first().evaluate((el) => {
+				const style = window.getComputedStyle(el);
+				return {
+					animationName: style.animationName,
+					animationDuration: style.animationDuration
+				};
+			})
+		)
+		.toEqual({ animationName: 'none', animationDuration: '0s' });
 }
 
 async function fillValidSubmissionFields(page: Page) {
@@ -266,6 +288,78 @@ test.describe('accessibility smoke coverage', () => {
 		await expect(page.locator('body')).toBeVisible();
 
 		await scanPage(page);
+	});
+
+	test.describe('reduced-motion alternatives', () => {
+		test.beforeEach(async ({ page }) => {
+			await page.emulateMedia({ reducedMotion: 'reduce' });
+		});
+
+		for (const route of [...publicRoutes, '/admin/login']) {
+			test(`${route} has no detectable axe violations with reduced motion`, async ({ page }) => {
+				await gotoOk(page, route);
+				await expect(page.locator('body')).toBeVisible();
+
+				await scanPage(page, ['color-contrast']);
+			});
+		}
+
+		test('homepage backdrop and loading spinner do not animate', async ({ page }) => {
+			await page.route('**/api/verify/send', async (route) => {
+				await new Promise((resolve) => setTimeout(resolve, 800));
+				await route.fulfill({ json: { ok: true } });
+			});
+
+			await gotoOk(page, '/');
+			await expectNoRunningAnimation(page, '.lyr-backdrop-orb');
+
+			await fillValidSubmissionFields(page);
+			await page.locator('#lyr-email').fill('tenant@example.com');
+			await submitRentForm(page);
+
+			await expect(page.locator('.lyr-spinner')).toBeVisible();
+			await expectNoRunningAnimation(page, '.lyr-spinner');
+		});
+
+		test('route changes keep focus and live-region behavior without slide motion', async ({ page }) => {
+			await gotoOk(page, '/');
+
+			const liveRegion = page.locator('#route-announcer');
+			await page.getByRole('link', { name: 'Learn' }).click();
+			await expect(page.getByRole('heading', { name: 'Negotiate smarter.' })).toBeVisible();
+			await expect
+				.poll(async () =>
+					page.evaluate(() => document.activeElement?.textContent?.replace(/\s+/g, ' ').trim())
+				)
+				.toBe('Negotiate smarter.');
+			await expect(liveRegion).toHaveText('Navigated to Negotiate smarter.');
+			await expect
+				.poll(async () =>
+					page
+						.locator('main > div.grid > div')
+						.first()
+						.evaluate((el) => window.getComputedStyle(el).transitionDuration)
+				)
+				.toBe('0s');
+		});
+
+		test('generated email and version switches render immediately', async ({ page }) => {
+			await mockSuccessfulVerification(page);
+			await gotoOk(page, '/');
+			await fillValidSubmissionFields(page);
+			await page.locator('#lyr-email').fill('tenant@example.com');
+			await submitRentForm(page);
+
+			await expect(page.locator('#lyr-otp-label')).toBeVisible();
+			await page.locator('.lyr-otp-input').first().click();
+			await page.keyboard.type('123456');
+
+			await expect(page.locator('textarea')).toHaveValue('First generated negotiation email.');
+
+			const emailVersion = page.getByRole('group', { name: 'Email version' });
+			await emailVersion.getByRole('radio', { name: /\$200\/mo/ }).check();
+			await expect(page.locator('textarea')).toHaveValue('Second generated negotiation email.');
+		});
 	});
 
 	test.describe('homepage error association', () => {

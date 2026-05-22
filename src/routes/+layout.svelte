@@ -7,6 +7,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import GlassBackdrop from '$lib/components/GlassBackdrop.svelte';
 	import BrandMark from '$lib/components/BrandMark.svelte';
+	import { initReducedMotion, reducedMotion } from '$lib/stores/motion.svelte';
 	import { tweaks, applyTweaksToRoot, persistTweaks } from '$lib/stores/tweaks.svelte';
 
 	let { children } = $props();
@@ -42,6 +43,8 @@
 	// /admin has its own chrome (see src/routes/admin/+layout.svelte). Render its pages
 	// raw here so the glass backdrop doesn't bleed into the admin UI.
 	let isAdmin = $derived(page.url.pathname === '/admin' || page.url.pathname.startsWith('/admin/'));
+
+	$effect(() => initReducedMotion());
 
 	// Apply tweaks to the DOM + persist them whenever they change. Single root-level
 	// $effect so every page inherits the current design tokens. The in-page
@@ -182,7 +185,7 @@
 					"
 				>
 					<div
-						class="absolute"
+						class="lyr-motion absolute"
 						style="
 							top: 2px; bottom: 2px;
 							left: calc({(activeTabIdx / TABS.length) * 100}% + 2px);
@@ -225,8 +228,16 @@
 					<div
 						bind:this={publicRouteContent}
 						class="col-start-1 row-start-1"
-						in:fly={{ x: slideDir * 60, duration: 280, easing: cubicOut }}
-						out:fly={{ x: -slideDir * 60, duration: 280, easing: cubicOut }}
+						in:fly={{
+							x: reducedMotion.enabled ? 0 : slideDir * 60,
+							duration: reducedMotion.enabled ? 0 : 280,
+							easing: cubicOut
+						}}
+						out:fly={{
+							x: reducedMotion.enabled ? 0 : -slideDir * 60,
+							duration: reducedMotion.enabled ? 0 : 280,
+							easing: cubicOut
+						}}
 					>
 						{@render children()}
 					</div>

@@ -29,14 +29,14 @@
 <div class="relative">
 	<!-- Collapsed summary row -->
 	<div
-		class="grid"
+		class="lyr-motion grid"
 		style="
 			grid-template-rows: {collapsed ? '1fr' : '0fr'};
 			transition: grid-template-rows 340ms {ease};
 		"
 	>
 		<div
-			class="overflow-hidden"
+			class="lyr-motion overflow-hidden"
 			style="
 				opacity: {collapsed ? 1 : 0};
 				transition: opacity 200ms ease;
@@ -97,14 +97,14 @@
 
 	<!-- Expanded full field -->
 	<div
-		class="grid"
+		class="lyr-motion grid"
 		style="
 			grid-template-rows: {collapsed ? '0fr' : '1fr'};
 			transition: grid-template-rows 340ms {ease};
 		"
 	>
 		<div
-			class="overflow-hidden"
+			class="lyr-motion overflow-hidden"
 			style="
 				opacity: {collapsed ? 0 : 1};
 				transition: opacity 200ms ease;

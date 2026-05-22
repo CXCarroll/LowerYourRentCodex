@@ -2,6 +2,8 @@
 	// Full-width primary button with accent gradient + press animation + optional spinner.
 	// Ported from screens.jsx PrimaryButton.
 
+	import { reducedMotion } from '$lib/stores/motion.svelte';
+
 	interface Props {
 		onClick?: () => void;
 		disabled?: boolean;
@@ -28,7 +30,7 @@
 	onpointerdown={() => (press = true)}
 	onpointerup={() => (press = false)}
 	onpointerleave={() => (press = false)}
-	class="relative w-full border-0"
+	class="lyr-motion relative w-full border-0"
 	style="
 		height: 54px;
 		border-radius: 16px;
@@ -44,7 +46,7 @@
 		box-shadow: {disabled
 		? 'none'
 		: '0 0.5px 0 rgba(255,255,255,0.35) inset, 0 -0.5px 0 rgba(0,0,0,0.15) inset, 0 8px 20px -6px var(--accent-mid), 0 2px 4px rgba(16,24,40,0.12)'};
-		transform: {press ? 'scale(0.98)' : 'scale(1)'};
+		transform: {press && !reducedMotion.enabled ? 'scale(0.98)' : 'scale(1)'};
 		transition: transform 120ms, box-shadow 180ms;
 	"
 >
@@ -57,6 +59,7 @@
 				width="16"
 				height="16"
 				viewBox="0 0 16 16"
+				class="lyr-spinner"
 				style="animation: lyr-spin 0.8s linear infinite;"
 			>
 				<circle cx="8" cy="8" r="6" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2" />

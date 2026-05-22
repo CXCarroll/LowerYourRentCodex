@@ -17,6 +17,8 @@
 	//  - The centred "YOUR RENT NEGOTIATION WILL APPEAR HERE" overlay is
 	//    rendered while pre-reveal/pre-dissolve to mask the empty state.
 
+	import { reducedMotion } from '$lib/stores/motion.svelte';
+
 	interface Props {
 		value: string;
 		onChange: (v: string) => void;
@@ -63,6 +65,8 @@
 	});
 
 	$effect(() => {
+		if (reducedMotion.enabled) return;
+
 		const wrap = wrapEl;
 		const canvas = canvasEl;
 		if (!wrap || !canvas) return;
@@ -272,11 +276,12 @@
 
 	const isEmpty = $derived(!value);
 	const showText = $derived(dissolved || focused);
+	const showCanvas = $derived(!reducedMotion.enabled);
 </script>
 
 <div
 	bind:this={wrapEl}
-	class="invisible-ink-shell"
+	class="invisible-ink-shell lyr-motion"
 	style="
 		position: relative;
 		height: {height}px;
@@ -299,6 +304,7 @@
 		onblur={() => (focused = false)}
 		aria-label={ariaLabel}
 		spellcheck="false"
+		class="lyr-motion"
 		style="
 			position: absolute; inset: 0;
 			width: 100%; height: 100%;
@@ -333,11 +339,13 @@
 		</div>
 	{/if}
 
-	<canvas
-		bind:this={canvasEl}
-		class="pointer-events-none"
-		style="position: absolute; inset: 0;"
-	></canvas>
+	{#if showCanvas}
+		<canvas
+			bind:this={canvasEl}
+			class="pointer-events-none"
+			style="position: absolute; inset: 0;"
+		></canvas>
+	{/if}
 
 	{#if !showText && !isEmpty && !dissolved}
 		<div

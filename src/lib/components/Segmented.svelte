@@ -45,7 +45,7 @@
 >
 	<legend class="sr-only">{legend}</legend>
 	<div
-		class="absolute"
+		class="lyr-motion absolute"
 		style="
 			top: {innerPad}px; bottom: {innerPad}px;
 			left: calc({(idx / options.length) * 100}% + {innerPad}px);
@@ -72,7 +72,7 @@
 				onchange={() => onSelect(o.value)}
 			/>
 			<span
-				class="segmented-label"
+				class="segmented-label lyr-motion"
 				style="
 					font-family: var(--font-sans);
 					font-size: {fontSize}px;
