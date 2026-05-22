@@ -47,7 +47,7 @@
 <section class="space-y-6">
 	<header class="flex items-baseline justify-between">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-slate-900">Download HUD &amp; Census data</h1>
+			<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">Download HUD &amp; Census data</h1>
 			<p class="mt-1 text-sm text-slate-500">
 				Pulls FMR + SAFMR from HUD's public XLSX files and rental vacancy from
 				Census HVS. No API key required.

@@ -29,7 +29,7 @@
 <section class="space-y-6">
 	<header class="flex items-baseline justify-between">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-slate-900">Edit post</h1>
+			<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">Edit post</h1>
 			<p class="mt-1 text-sm text-slate-500">
 				Status: <span class="font-medium text-slate-700">{statusLabel}</span>
 				{#if data.post.publishedAt}

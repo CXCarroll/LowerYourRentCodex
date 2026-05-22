@@ -75,6 +75,7 @@ test.describe('accessibility smoke coverage', () => {
 			await gotoOk(page, route);
 			await expect(page.locator('body')).toBeVisible();
 
+			await expect(page.locator('main h1').first()).toHaveAttribute('tabindex', '-1');
 			await scanPage(page);
 
 			if (route === '/') {
@@ -86,6 +87,35 @@ test.describe('accessibility smoke coverage', () => {
 			}
 		});
 	}
+
+	test('SPA route changes focus the new h1 and update the live region', async ({ page }) => {
+		await gotoOk(page, '/');
+
+		const liveRegion = page.locator('#route-announcer');
+		await expect(liveRegion).toBeAttached();
+
+		await page.getByRole('link', { name: 'Learn' }).click();
+		await expect(page.getByRole('heading', { name: 'Negotiate smarter.' })).toBeVisible();
+		await expect
+			.poll(async () =>
+				page.evaluate(() => document.activeElement?.textContent?.replace(/\s+/g, ' ').trim())
+			)
+			.toBe('Negotiate smarter.');
+		await expect(liveRegion).toHaveText('Navigated to Negotiate smarter.');
+
+		await scanPage(page);
+
+		await page.getByRole('link', { name: 'Search' }).click();
+		await expect(page.getByRole('heading', { name: 'Find a fair rent.' })).toBeVisible();
+		await expect
+			.poll(async () =>
+				page.evaluate(() => document.activeElement?.textContent?.replace(/\s+/g, ' ').trim())
+			)
+			.toBe('Find a fair rent.');
+		await expect(liveRegion).toHaveText('Navigated to Find a fair rent.');
+
+		await scanPage(page);
+	});
 
 	test('primary navigation is exposed as links with the current page marked', async ({ page }) => {
 		for (const route of publicRoutes) {

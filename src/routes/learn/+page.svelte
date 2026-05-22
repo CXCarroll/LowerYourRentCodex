@@ -14,6 +14,7 @@
 	<div>
 		<h1
 			class="m-0"
+			tabindex="-1"
 			style="
 				font-family: var(--font-serif);
 				font-weight: 400;

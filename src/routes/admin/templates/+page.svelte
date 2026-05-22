@@ -22,7 +22,7 @@
 <section class="space-y-6">
 	<header class="flex items-baseline justify-between">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-slate-900">Email templates</h1>
+			<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">Email templates</h1>
 			<p class="mt-1 text-sm text-slate-500">
 				{#if data.activeCount === 0}
 					No active templates — users get the built-in default until you activate one.

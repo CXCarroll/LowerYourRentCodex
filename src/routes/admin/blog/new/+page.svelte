@@ -25,7 +25,7 @@
 <section class="space-y-6">
 	<header class="flex items-baseline justify-between">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-slate-900">New post</h1>
+			<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">New post</h1>
 			<p class="mt-1 text-sm text-slate-500">Saves as a draft. You can publish it from the edit screen.</p>
 		</div>
 		<a href="/admin/blog" class="text-sm text-slate-500 hover:underline">← Back to posts</a>

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import '../app.css';
+	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
+	import { tick } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import GlassBackdrop from '$lib/components/GlassBackdrop.svelte';
@@ -8,6 +10,34 @@
 	import { tweaks, applyTweaksToRoot, persistTweaks } from '$lib/stores/tweaks.svelte';
 
 	let { children } = $props();
+	let routeAnnouncement = $state('');
+	let publicRouteContent: HTMLElement | undefined = $state();
+	let hasCompletedInitialNavigation = false;
+	let focusFrame: number | undefined;
+
+	afterNavigate(() => {
+		if (!hasCompletedInitialNavigation) {
+			hasCompletedInitialNavigation = true;
+			return;
+		}
+
+		routeAnnouncement = '';
+		void tick().then(() => {
+			if (focusFrame !== undefined) cancelAnimationFrame(focusFrame);
+			focusFrame = requestAnimationFrame(() => {
+				const focusRoot = isAdmin ? document.querySelector<HTMLElement>('main') : publicRouteContent;
+				const heading =
+					focusRoot?.querySelector<HTMLElement>('h1[tabindex="-1"]') ??
+					focusRoot?.querySelector<HTMLElement>('h1') ??
+					document.querySelector<HTMLElement>('main h1[tabindex="-1"]') ??
+					document.querySelector<HTMLElement>('main h1');
+				const headingText = heading?.textContent?.replace(/\s+/g, ' ').trim();
+
+				heading?.focus();
+				routeAnnouncement = headingText ? `Navigated to ${headingText}` : 'Navigated to page';
+			});
+		});
+	});
 
 	// /admin has its own chrome (see src/routes/admin/+layout.svelte). Render its pages
 	// raw here so the glass backdrop doesn't bleed into the admin UI.
@@ -103,8 +133,14 @@
 </svelte:head>
 
 {#if isAdmin}
+	<div id="route-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
+		{routeAnnouncement}
+	</div>
 	{@render children()}
 {:else}
+	<div id="route-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
+		{routeAnnouncement}
+	</div>
 	<GlassBackdrop />
 	<div class="relative z-0 min-h-dvh">
 		<main class="mx-auto w-full max-w-[440px] px-5 pt-8 pb-16 sm:pt-12">
@@ -187,6 +223,7 @@
 			<div class="grid">
 				{#key page.url.pathname}
 					<div
+						bind:this={publicRouteContent}
 						class="col-start-1 row-start-1"
 						in:fly={{ x: slideDir * 60, duration: 280, easing: cubicOut }}
 						out:fly={{ x: -slideDir * 60, duration: 280, easing: cubicOut }}
@@ -212,5 +249,10 @@
 	.primary-nav-link:focus-visible {
 		outline: 2px solid color-mix(in srgb, var(--accent, #0f62fe) 72%, white);
 		outline-offset: -2px;
+	}
+
+	:global(main h1[tabindex='-1']:focus) {
+		outline: 2px solid color-mix(in srgb, var(--accent, #0f62fe) 72%, white);
+		outline-offset: 4px;
 	}
 </style>

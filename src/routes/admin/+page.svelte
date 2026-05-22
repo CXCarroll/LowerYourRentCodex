@@ -56,7 +56,7 @@
 
 <section class="space-y-6">
 	<header class="flex items-baseline justify-between">
-		<h1 class="text-xl font-semibold tracking-tight text-slate-900">Dashboard</h1>
+		<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">Dashboard</h1>
 		<a href="/admin/upload/vacancy" class="btn-primary text-sm">Upload vacancy CSV</a>
 	</header>
 

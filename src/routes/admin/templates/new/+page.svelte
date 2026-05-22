@@ -24,7 +24,7 @@
 <section class="space-y-6">
 	<header class="flex items-baseline justify-between">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-slate-900">New template</h1>
+			<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">New template</h1>
 			<p class="mt-1 text-sm text-slate-500">
 				Saved as inactive. Activate it from the edit screen once it's ready.
 			</p>

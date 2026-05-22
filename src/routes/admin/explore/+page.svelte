@@ -156,7 +156,7 @@
 
 <section class="space-y-6">
 	<header class="flex items-baseline justify-between">
-		<h1 class="text-xl font-semibold tracking-tight text-slate-900">Explore ZIP</h1>
+		<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">Explore ZIP</h1>
 		<div class="text-sm text-slate-500">Search a ZIP to see rent & vacancy data.</div>
 	</header>
 

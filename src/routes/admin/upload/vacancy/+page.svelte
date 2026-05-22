@@ -50,7 +50,7 @@
 <section class="space-y-6">
 	<header class="flex items-baseline justify-between">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-slate-900">Upload vacancy data</h1>
+			<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">Upload vacancy data</h1>
 			<p class="mt-1 text-sm text-slate-500">
 				CSV with columns: <code>year, quarter, cbsa_code, rental_vacancy_pct</code>. Max 5 MB /
 				50,000 rows.

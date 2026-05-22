@@ -5,7 +5,7 @@
 </script>
 
 <section class="mx-auto mt-10 max-w-sm">
-	<h1 class="text-xl font-semibold tracking-tight text-slate-900">Admin sign-in</h1>
+	<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">Admin sign-in</h1>
 	<p class="mt-1 text-sm text-slate-500">Enter the admin password to continue.</p>
 
 	<form method="POST" class="card mt-6 space-y-4 p-6" autocomplete="off">
