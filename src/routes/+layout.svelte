@@ -1,12 +1,10 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import GlassBackdrop from '$lib/components/GlassBackdrop.svelte';
 	import BrandMark from '$lib/components/BrandMark.svelte';
-	import Segmented from '$lib/components/Segmented.svelte';
 	import { tweaks, applyTweaksToRoot, persistTweaks } from '$lib/stores/tweaks.svelte';
 
 	let { children } = $props();
@@ -52,6 +50,8 @@
 		return TABS.findIndex((x) => x.value === t);
 	}
 
+	let activeTabIdx = $derived(Math.max(0, tabIndex(activeTab)));
+
 	// Slide direction: +1 when moving rightward through the tab order
 	// (new content flies in from the right), -1 when moving leftward.
 	// prevTabIdx starts at -1 so the first $effect run just bootstraps it
@@ -70,11 +70,6 @@
 			prevTabIdx = newIdx;
 		}
 	});
-
-	function onPickTab(v: Tab) {
-		const t = TABS.find((x) => x.value === v);
-		if (t && t.value !== activeTab) goto(t.href);
-	}
 
 	// Share-preview metadata (Open Graph + Twitter Card). URLs are absolute
 	// and built from the current request's origin so they work on any host —
@@ -138,14 +133,52 @@
 				>
 					Lower Your Rent
 				</span>
-				<div class="ml-auto flex-shrink-0" style="min-width: 168px;">
-					<Segmented
-						compact
-						options={TABS.map(({ value, label }) => ({ value, label }))}
-						value={activeTab}
-						onSelect={onPickTab}
-					/>
-				</div>
+				<nav
+					aria-label="Primary"
+					class="relative ml-auto flex flex-shrink-0"
+					style="
+						min-width: 168px;
+						height: 30px;
+						border-radius: 11px;
+						background: rgba(30,30,40,0.06);
+						padding: 2px;
+						border: 0.5px solid rgba(30,30,40,0.08);
+					"
+				>
+					<div
+						class="absolute"
+						style="
+							top: 2px; bottom: 2px;
+							left: calc({(activeTabIdx / TABS.length) * 100}% + 2px);
+							width: calc({100 / TABS.length}% - 4px);
+							border-radius: 9px;
+							background: rgba(255,255,255,0.95);
+							box-shadow: 0 1px 3px rgba(16,24,40,0.12), 0 0.5px 0 rgba(255,255,255,0.9) inset;
+							transition: left 260ms cubic-bezier(0.32,0.72,0,1);
+						"
+						aria-hidden="true"
+					></div>
+					{#each TABS as tab (tab.value)}
+						<a
+							href={tab.href}
+							aria-current={tab.value === activeTab ? 'page' : undefined}
+							class="primary-nav-link flex-1 relative z-10"
+							style="
+								font-family: var(--font-sans);
+								font-size: 10px;
+								font-weight: 600;
+								color: {tab.value === activeTab ? 'var(--ink)' : 'rgba(30,30,40,0.72)'};
+								letter-spacing: 0;
+								transition: color 180ms;
+								padding: 0 2px;
+								white-space: nowrap;
+								border-radius: 9px;
+							"
+						>
+							{tab.label}
+						</a>
+					{/each}
+				</nav>
 			</div>
 
 			<!-- Sliding content area. CSS grid lets the outgoing + incoming
@@ -165,3 +198,19 @@
 		</main>
 	</div>
 {/if}
+
+<style>
+	.primary-nav-link {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		text-align: center;
+		text-decoration: none;
+		min-width: 0;
+	}
+
+	.primary-nav-link:focus-visible {
+		outline: 2px solid color-mix(in srgb, var(--accent, #0f62fe) 72%, white);
+		outline-offset: -2px;
+	}
+</style>

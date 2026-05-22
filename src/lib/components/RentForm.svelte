@@ -712,6 +712,8 @@ Thanks for considering.
 			onEdit={() => (collapsed = { ...collapsed, aptType: false })}
 		>
 			<Segmented
+				name="apt-type"
+				legend="Apartment type"
 				options={SEG_OPTIONS}
 				value={aptType}
 				onSelect={(v) => {
@@ -957,6 +959,8 @@ Thanks for considering.
 					{#if showPicker}
 						<div class="flex-1 min-w-0">
 							<Segmented
+								name="email-version"
+								legend="Email version"
 								options={versionOptions}
 								value={String(activeIndex)}
 								onSelect={onPickVersion}

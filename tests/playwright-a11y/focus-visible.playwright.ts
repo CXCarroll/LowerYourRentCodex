@@ -51,6 +51,22 @@ async function mockAddressSuggestions(page: Page) {
 	});
 }
 
+async function mockSuccessfulVerification(page: Page) {
+	await page.route('**/api/verify/send', async (route) => {
+		await route.fulfill({ json: { ok: true } });
+	});
+	await page.route('**/api/verify/check', async (route) => {
+		await route.fulfill({
+			json: {
+				versions: [
+					{ body: 'First generated negotiation email.', reductionCents: 10_000 },
+					{ body: 'Second generated negotiation email.', reductionCents: 20_000 }
+				]
+			}
+		});
+	});
+}
+
 test.describe('accessibility smoke coverage', () => {
 	test.describe.configure({ mode: 'serial' });
 
@@ -70,6 +86,68 @@ test.describe('accessibility smoke coverage', () => {
 			}
 		});
 	}
+
+	test('primary navigation is exposed as links with the current page marked', async ({ page }) => {
+		for (const route of publicRoutes) {
+			await gotoOk(page, route);
+
+			const primaryNav = page.getByRole('navigation', { name: 'Primary' });
+			await expect(primaryNav).toBeVisible();
+
+			await expect(primaryNav.getByRole('link', { name: 'Negotiate' })).toHaveAttribute(
+				'href',
+				'/'
+			);
+			await expect(primaryNav.getByRole('link', { name: 'Learn' })).toHaveAttribute(
+				'href',
+				'/learn'
+			);
+			await expect(primaryNav.getByRole('link', { name: 'Search' })).toHaveAttribute(
+				'href',
+				'/search'
+			);
+
+			const currentName = route === '/learn' ? 'Learn' : route === '/search' ? 'Search' : 'Negotiate';
+			await expect(primaryNav.getByRole('link', { name: currentName })).toHaveAttribute(
+				'aria-current',
+				'page'
+			);
+		}
+	});
+
+	test('segmented selectors expose native radio groups', async ({ page }) => {
+		await gotoOk(page, '/');
+
+		const apartmentType = page.getByRole('group', { name: 'Apartment type' });
+		await expect(apartmentType).toBeVisible();
+		await expect(apartmentType.getByRole('radio', { name: '1 BR' })).toBeChecked();
+
+		await apartmentType.getByRole('radio', { name: 'Studio' }).check();
+		await expect(apartmentType.getByRole('radio', { name: 'Studio' })).toBeChecked();
+
+		await scanPage(page);
+	});
+
+	test('email version picker exposes a named radio group after verification', async ({ page }) => {
+		await mockSuccessfulVerification(page);
+		await gotoOk(page, '/');
+		await fillValidSubmissionFields(page);
+		await page.locator('#lyr-email').fill('tenant@example.com');
+		await submitRentForm(page);
+
+		await expect(page.locator('#lyr-otp-label')).toBeVisible();
+		await page.locator('.lyr-otp-input').first().click();
+		await page.keyboard.type('123456');
+
+		const emailVersion = page.getByRole('group', { name: 'Email version' });
+		await expect(emailVersion).toBeVisible();
+		await expect(emailVersion.getByRole('radio', { name: /\$100\/mo/ })).toBeChecked();
+
+		await emailVersion.getByRole('radio', { name: /\$200\/mo/ }).check();
+		await expect(emailVersion.getByRole('radio', { name: /\$200\/mo/ })).toBeChecked();
+
+		await scanPage(page);
+	});
 
 	test('keyboard traversal exposes a visible focus indicator on the homepage', async ({ page }) => {
 		await gotoOk(page, '/');

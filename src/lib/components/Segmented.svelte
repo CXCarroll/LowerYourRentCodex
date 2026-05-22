@@ -10,13 +10,15 @@
 
 	interface Props {
 		options: Array<Option<T>>;
+		name: string;
+		legend: string;
 		value: T;
 		onSelect: (v: T) => void;
-		/** Smaller variant for header chrome. Defaults to false (form-row sizing). */
+		/** Smaller variant for constrained chrome. Defaults to false (form-row sizing). */
 		compact?: boolean;
 	}
 
-	let { options, value, onSelect, compact = false }: Props = $props();
+	let { options, name, legend, value, onSelect, compact = false }: Props = $props();
 
 	let idx = $derived(Math.max(0, options.findIndex((o) => o.value === value)));
 
@@ -29,7 +31,7 @@
 	let buttonPad = $derived(compact ? 2 : 8);
 </script>
 
-<div
+<fieldset
 	class="relative flex"
 	style="
 		height: {outerHeight}px;
@@ -37,8 +39,11 @@
 		background: rgba(30,30,40,0.06);
 		padding: {innerPad}px;
 		border: 0.5px solid rgba(30,30,40,0.08);
+		margin: 0;
+		min-inline-size: 0;
 	"
 >
+	<legend class="sr-only">{legend}</legend>
 	<div
 		class="absolute"
 		style="
@@ -52,22 +57,69 @@
 		"
 	></div>
 	{#each options as o (o.value)}
-		<button
-			type="button"
-			onclick={() => onSelect(o.value)}
-			class="flex-1 relative z-10 border-0 bg-transparent cursor-pointer"
+		<label
+			class="segmented-option flex-1 relative z-10 cursor-pointer"
 			style="
-				font-family: var(--font-sans);
-				font-size: {fontSize}px;
-				font-weight: 600;
-				color: {o.value === value ? 'var(--ink)' : 'rgba(30,30,40,0.72)'};
-				letter-spacing: -0.1px;
-				transition: color 180ms;
-				padding: 0 {buttonPad}px;
-				white-space: nowrap;
+				border-radius: {pillRadius}px;
 			"
 		>
-			{o.label}
-		</button>
+			<input
+				class="segmented-input"
+				type="radio"
+				{name}
+				value={o.value}
+				checked={o.value === value}
+				onchange={() => onSelect(o.value)}
+			/>
+			<span
+				class="segmented-label"
+				style="
+					font-family: var(--font-sans);
+					font-size: {fontSize}px;
+					font-weight: 600;
+					color: {o.value === value ? 'var(--ink)' : 'rgba(30,30,40,0.72)'};
+					letter-spacing: 0;
+					transition: color 180ms;
+					padding: 0 {buttonPad}px;
+					white-space: nowrap;
+					border-radius: {pillRadius}px;
+				"
+			>
+				{o.label}
+			</span>
+		</label>
 	{/each}
-</div>
+</fieldset>
+
+<style>
+	.segmented-option {
+		display: flex;
+		align-items: stretch;
+		justify-content: center;
+		min-width: 0;
+	}
+
+	.segmented-input {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+
+	.segmented-label {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		width: 100%;
+		align-items: center;
+		justify-content: center;
+		text-align: center;
+		pointer-events: none;
+	}
+
+	.segmented-input:focus-visible + .segmented-label {
+		outline: 2px solid color-mix(in srgb, var(--accent, #0f62fe) 72%, white);
+		outline-offset: -2px;
+	}
+</style>
