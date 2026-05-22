@@ -45,9 +45,9 @@ console.info = timingLog as unknown as typeof console.info;
 mock.module('$env/dynamic/private', () => ({ env: process.env }));
 mock.module('$app/environment', () => ({ building: false }));
 
-const { createVerifyCheckPost } = await import('../../src/routes/api/verify/check/+server');
+const { _createVerifyCheckPost } = await import('../../src/routes/api/verify/check/+server');
 
-const POST = createVerifyCheckPost({
+const POST = _createVerifyCheckPost({
 	consumeRateLimit,
 	getClientIp: () => '127.0.0.1',
 	consumeVerifiedCodeTx,
@@ -62,7 +62,7 @@ const POST = createVerifyCheckPost({
 	geocodeAddressToZip,
 	lookupZip,
 	insertSubmissionUnlessRecentDuplicateTx,
-	db: { transaction } as unknown as NonNullable<Parameters<typeof createVerifyCheckPost>[0]['db']>,
+	db: { transaction } as unknown as NonNullable<Parameters<typeof _createVerifyCheckPost>[0]['db']>,
 	getMapboxToken: () => undefined
 });
 

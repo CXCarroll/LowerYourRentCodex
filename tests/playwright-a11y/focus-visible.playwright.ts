@@ -37,6 +37,20 @@ async function expectAssociatedError(page: Page, selector: string, errorId: stri
 	await expect(control).toHaveAttribute('aria-errormessage', errorId);
 }
 
+async function mockAddressSuggestions(page: Page) {
+	await page.route('**/api/address/suggest**', async (route) => {
+		await route.fulfill({
+			json: {
+				matches: [
+					{ display: '123 Main Street, Brooklyn, NY 11201', zip: '11201' },
+					{ display: '123 Main Avenue, Brooklyn, NY 11201', zip: '11201' },
+					{ display: '123 Main Road, Brooklyn, NY 11201', zip: '11201' }
+				]
+			}
+		});
+	});
+}
+
 test.describe('accessibility smoke coverage', () => {
 	test.describe.configure({ mode: 'serial' });
 
@@ -90,6 +104,53 @@ test.describe('accessibility smoke coverage', () => {
 		}
 
 		expect(focusedIndicators.length).toBeGreaterThan(0);
+	});
+
+	test('homepage address autocomplete follows the ARIA combobox pattern', async ({ page }) => {
+		await mockAddressSuggestions(page);
+		await gotoOk(page, '/');
+
+		const input = page.locator('#lyr-address');
+		await input.fill('123 Main');
+
+		await expect(input).toHaveAttribute('role', 'combobox');
+		await expect(input).toHaveAttribute('aria-autocomplete', 'list');
+		await expect(input).toHaveAttribute('aria-haspopup', 'listbox');
+		await expect(input).toHaveAttribute('aria-expanded', 'true');
+
+		const listboxId = await input.getAttribute('aria-controls');
+		expect(listboxId).toBeTruthy();
+		const listbox = page.locator(`[id="${listboxId}"]`);
+		await expect(listbox).toHaveAttribute('role', 'listbox');
+
+		const options = listbox.locator(':scope > [role="option"]');
+		await expect(options).toHaveCount(3);
+		await expect(listbox.locator('[role="option"] button')).toHaveCount(0);
+
+		const firstActive = await input.getAttribute('aria-activedescendant');
+		expect(firstActive).toBeTruthy();
+		await expect(page.locator(`[id="${firstActive}"]`)).toHaveAttribute('role', 'option');
+
+		await page.keyboard.press('ArrowDown');
+		const secondActive = await input.getAttribute('aria-activedescendant');
+		expect(secondActive).toBeTruthy();
+		expect(secondActive).not.toBe(firstActive);
+		await expect(page.locator(`[id="${secondActive}"]`)).toHaveAttribute('aria-selected', 'true');
+
+		await page.keyboard.press('ArrowUp');
+		await expect(input).toHaveAttribute('aria-activedescendant', firstActive as string);
+
+		await page.keyboard.press('Escape');
+		await expect(input).toHaveAttribute('aria-expanded', 'false');
+		await expect(input).not.toHaveAttribute('aria-activedescendant', /.*/);
+
+		await input.fill('123 Main S');
+		await expect(input).toHaveAttribute('aria-expanded', 'true');
+		await page.keyboard.press('Enter');
+		await expect(input).toHaveValue('123 Main Street, Brooklyn, NY 11201');
+		await expect(input).toHaveAttribute('aria-expanded', 'false');
+
+		await scanPage(page);
 	});
 
 	test('/admin/login has no detectable axe violations', async ({ page }) => {

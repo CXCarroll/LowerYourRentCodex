@@ -5,6 +5,7 @@
 	interface Props {
 		value: string;
 		onValue: (v: string) => void;
+		role?: string;
 		placeholder?: string;
 		type?: string;
 		inputmode?: 'text' | 'numeric' | 'tel' | 'decimal' | 'email' | 'search' | 'url';
@@ -12,11 +13,17 @@
 		prefix?: string;
 		id?: string;
 		name?: string;
+		ariaControls?: string;
+		ariaExpanded?: boolean;
+		ariaHaspopup?: 'dialog' | 'grid' | 'listbox' | 'menu' | 'tree' | 'true' | 'false';
+		ariaAutocomplete?: 'none' | 'inline' | 'list' | 'both';
+		ariaActivedescendant?: string;
 		ariaInvalid?: boolean;
 		ariaLabelledby?: string;
 		ariaDescribedby?: string;
 		ariaErrormessage?: string;
 		inputFontSize?: number;
+		onKeydown?: (e: KeyboardEvent) => void;
 		/** Optional bindable ref to the native <input> for callers that need
 		 *  direct DOM access (e.g. caret control). Most callers can ignore it. */
 		inputRef?: HTMLInputElement;
@@ -25,6 +32,7 @@
 	let {
 		value,
 		onValue,
+		role,
 		placeholder,
 		type = 'text',
 		inputmode,
@@ -32,11 +40,17 @@
 		prefix,
 		id,
 		name,
+		ariaControls,
+		ariaExpanded,
+		ariaHaspopup,
+		ariaAutocomplete,
+		ariaActivedescendant,
 		ariaInvalid,
 		ariaLabelledby,
 		ariaDescribedby,
 		ariaErrormessage,
 		inputFontSize,
+		onKeydown,
 		inputRef = $bindable()
 	}: Props = $props();
 
@@ -71,16 +85,23 @@
 		bind:this={inputRef}
 		{id}
 		{name}
+		{role}
 		{type}
 		{placeholder}
 		inputmode={inputmode}
 		autocomplete={autocomplete as never}
 		{value}
+		aria-controls={ariaControls}
+		aria-expanded={ariaExpanded}
+		aria-haspopup={ariaHaspopup}
+		aria-autocomplete={ariaAutocomplete}
+		aria-activedescendant={ariaActivedescendant}
 		aria-invalid={ariaInvalid ? 'true' : undefined}
 		aria-labelledby={ariaLabelledby}
 		aria-describedby={ariaDescribedby}
 		aria-errormessage={ariaErrormessage}
 		oninput={(e) => onValue((e.target as HTMLInputElement).value)}
+		onkeydown={onKeydown}
 		onfocus={() => (focus = true)}
 		onblur={() => (focus = false)}
 		class="flex-1 min-w-0 w-full h-full border-0"

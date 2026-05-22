@@ -60,6 +60,14 @@
 		return q.trim().length >= 4;
 	}
 
+	function optionId(idx: number) {
+		return `${LISTBOX_ID}-option-${idx}`;
+	}
+
+	const activeDescendant = $derived(
+		open && highlighted >= 0 ? optionId(highlighted) : undefined
+	);
+
 	// The dropdown is rendered into <body> so it escapes the ancestor
 	// `overflow: hidden` collapse-animation wrappers (CollapsibleField,
 	// RentForm) that would otherwise clip it. It is positioned with
@@ -181,28 +189,26 @@
 	});
 </script>
 
-<div bind:this={wrapRef} class="relative" onkeydown={onKey} role="presentation">
-	<div
+<div bind:this={wrapRef} class="relative">
+	<GlassInput
+		{id}
+		{name}
+		{value}
+		{placeholder}
 		role="combobox"
-		aria-expanded={open}
-		aria-controls={LISTBOX_ID}
-		aria-haspopup="listbox"
-		aria-labelledby={ariaLabelledby}
-		tabindex="-1"
-	>
-		<GlassInput
-			{id}
-			{name}
-			{value}
-			{placeholder}
-			{ariaInvalid}
-			{ariaLabelledby}
-			{ariaDescribedby}
-			{ariaErrormessage}
-			autocomplete="street-address"
-			onValue={handleValue}
-		/>
-	</div>
+		ariaControls={LISTBOX_ID}
+		ariaExpanded={open}
+		ariaHaspopup="listbox"
+		ariaAutocomplete="list"
+		ariaActivedescendant={activeDescendant}
+		{ariaInvalid}
+		{ariaLabelledby}
+		{ariaDescribedby}
+		{ariaErrormessage}
+		autocomplete="street-address"
+		onValue={handleValue}
+		onKeydown={onKey}
+	/>
 
 	{#if loading}
 		<div
@@ -245,38 +251,40 @@
 				backdrop-filter: blur(24px) saturate(180%);
 				-webkit-backdrop-filter: blur(24px) saturate(180%);
 				border: 0.5px solid var(--hairline);
-				box-shadow:
-					0 1px 0 rgba(255,255,255,0.9) inset,
-					0 12px 32px -8px rgba(16,24,40,0.18);
+					box-shadow:
+						0 1px 0 rgba(255,255,255,0.9) inset,
+						0 12px 32px -8px rgba(16,24,40,0.18);
 			"
-		>
-			{#each candidates as c, i (c.display + i)}
-				<li role="option" aria-selected={i === highlighted}>
-					<button
-						type="button"
-						onmousedown={(e) => {
-							e.preventDefault();
-							select(i);
-						}}
-						onmouseenter={() => (highlighted = i)}
-						class="address-suggestion-button w-full text-left"
-						style="
-							display: block;
-							min-height: 44px;
-							padding: 10px 12px;
-							border: 0;
-							border-radius: 12px;
-							background: {i === highlighted ? 'var(--accent-ghost)' : 'transparent'};
-							font-family: var(--font-sans);
-							font-size: 15px;
-							line-height: 1.35;
-							color: var(--ink);
-							cursor: pointer;
-							transition: background 120ms ease;
-						"
-					>
-						{c.display}
-					</button>
+			>
+				{#each candidates as c, i (c.display + i)}
+					<!-- svelte-ignore a11y_click_events_have_key_events (keyboard selection stays on the input via aria-activedescendant) -->
+					<li
+						id={optionId(i)}
+					role="option"
+					aria-selected={i === highlighted}
+					onpointerdown={(e) => {
+						e.preventDefault();
+						select(i);
+					}}
+					onclick={() => select(i)}
+					onmouseenter={() => (highlighted = i)}
+					class="address-suggestion-option w-full text-left"
+					style="
+						display: block;
+						min-height: 44px;
+						padding: 10px 12px;
+						border: 0;
+						border-radius: 12px;
+						background: {i === highlighted ? 'var(--accent-ghost)' : 'transparent'};
+						font-family: var(--font-sans);
+						font-size: 15px;
+						line-height: 1.35;
+						color: var(--ink);
+						cursor: pointer;
+						transition: background 120ms ease;
+					"
+				>
+					{c.display}
 				</li>
 			{/each}
 		</ul>

@@ -116,7 +116,7 @@ interface VerifyCheckDeps {
 	getMapboxToken: () => string | undefined;
 }
 
-export function createVerifyCheckPost(deps: VerifyCheckDeps): RequestHandler {
+export function _createVerifyCheckPost(deps: VerifyCheckDeps): RequestHandler {
 	return async (event) => {
 	const { request, fetch } = event;
 	const timings = createRequestTimings();
@@ -308,7 +308,7 @@ export function createVerifyCheckPost(deps: VerifyCheckDeps): RequestHandler {
 	};
 }
 
-export const POST = createVerifyCheckPost({
+export const POST = _createVerifyCheckPost({
 	consumeRateLimit,
 	getClientIp,
 	consumeVerifiedCodeTx,
