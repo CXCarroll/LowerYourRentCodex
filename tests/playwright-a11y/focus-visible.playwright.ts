@@ -1,7 +1,10 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import postgres from 'postgres';
 
 const publicRoutes = ['/', '/search', '/learn'];
+const adminA11yPassword = process.env.ADMIN_A11Y_PASSWORD ?? 'a11y-admin-password';
+const adminExploreZip = '99501';
 
 async function gotoOk(page: Page, route: string) {
 	const response = await page.goto(route);
@@ -87,6 +90,38 @@ async function mockSuccessfulVerification(page: Page) {
 			}
 		});
 	});
+}
+
+async function loginAsAdmin(page: Page, next = '/admin/explore') {
+	await gotoOk(page, `/admin/login?next=${encodeURIComponent(next)}`);
+	await page.locator('#password').fill(adminA11yPassword);
+	await page.getByRole('button', { name: 'Sign in' }).click();
+	await expect(page).toHaveURL(new RegExp(`${next}$`));
+}
+
+async function seedAdminExploreZip() {
+	const databaseUrl = process.env.DATABASE_URL;
+	if (!databaseUrl) return;
+
+	const sql = postgres(databaseUrl, { max: 1, idle_timeout: 1 });
+	try {
+		await sql`
+			insert into zip_county (zip, county_fips, cbsa_code)
+			values (${adminExploreZip}, '02020', null)
+			on conflict (zip) do update set
+				county_fips = excluded.county_fips,
+				cbsa_code = excluded.cbsa_code
+		`;
+		await sql`
+			insert into zip_centroids (zip, lat, lng)
+			values (${adminExploreZip}, '61.217600', '-149.899700')
+			on conflict (zip) do update set
+				lat = excluded.lat,
+				lng = excluded.lng
+		`;
+	} finally {
+		await sql.end({ timeout: 1 });
+	}
 }
 
 test.describe('accessibility smoke coverage', () => {
@@ -288,6 +323,41 @@ test.describe('accessibility smoke coverage', () => {
 		await expect(page.locator('body')).toBeVisible();
 
 		await scanPage(page);
+	});
+
+	test.describe('admin ZIP explorer map accessibility', () => {
+		test.skip(!process.env.DATABASE_URL, 'Authenticated admin route checks require DATABASE_URL.');
+
+		test.beforeEach(async () => {
+			await seedAdminExploreZip();
+		});
+
+		test('/admin/explore exposes a named map and marker table alternative', async ({ page }) => {
+			await loginAsAdmin(page);
+
+			const map = page.locator('[aria-label="ZIP code marker map"]');
+			await expect(map).toBeVisible();
+			await expect(map).toHaveAccessibleName('ZIP code marker map');
+			await expect(map).toHaveAttribute('aria-describedby', /\bzip-map-keyboard-instructions\b/);
+			await expect(page.locator('#zip-map-keyboard-instructions')).toContainText(
+				'arrow keys to pan'
+			);
+			await expect(map.locator('xpath=following-sibling::*[1]')).toContainText('ZIP markers');
+			await expect(page.getByText('No ZIP markers plotted yet.')).toBeVisible();
+
+			await page.getByRole('textbox', { name: 'ZIP code' }).fill(adminExploreZip);
+			await page.getByRole('button', { name: 'Look up' }).click();
+
+			const markerTable = page.getByRole('table', {
+				name: 'ZIP code markers plotted on the map'
+			});
+			await expect(markerTable).toBeVisible();
+			await expect(markerTable.getByRole('row', { name: /99501/ })).toContainText('No rent data');
+			await expect(markerTable.getByRole('cell', { name: '61.218' })).toBeVisible();
+			await expect(markerTable.getByRole('cell', { name: '-149.900' })).toBeVisible();
+
+			await scanPage(page);
+		});
 	});
 
 	test.describe('reduced-motion alternatives', () => {
