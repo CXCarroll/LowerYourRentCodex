@@ -7,10 +7,16 @@
 
 	interface Props {
 		seriesByAptType: Record<AptType, Array<{ year: number; cents: number }>>;
+		title?: string;
 		height?: number;
 	}
 
-	const { seriesByAptType, height = 300 }: Props = $props();
+	const {
+		seriesByAptType,
+		title = 'HUD FMR history by apartment type',
+		height = 300
+	}: Props = $props();
+	const uid = $props.id();
 
 	// Distinct hues so every line is readable against the card background.
 	// Order matches APT_TYPES: studio, 1br, 2br, 3br, 4br_plus.
@@ -20,6 +26,14 @@
 		'2br': '#2563eb', // blue-600 — headline series
 		'3br': '#f59e0b', // amber-500
 		'4br_plus': '#e11d48' // rose-600
+	};
+
+	const DASHES: Record<AptType, string | null> = {
+		studio: null,
+		'1br': '6 3',
+		'2br': '2 3',
+		'3br': '8 3 2 3',
+		'4br_plus': '1 3'
 	};
 
 	const shortLabel: Record<AptType, string> = {
@@ -34,6 +48,8 @@
 		APT_TYPES.flatMap((t) => seriesByAptType[t] ?? []).filter((p) => Number.isFinite(p.cents))
 	);
 	const hasData = $derived(allPoints.length > 0);
+	const chartTitleId = $derived(`${uid}-title`);
+	const chartDescId = $derived(`${uid}-desc`);
 
 	const years = $derived(Array.from(new Set(allPoints.map((p) => p.year))).sort((a, b) => a - b));
 	const minYear = $derived(years[0] ?? 0);
@@ -42,6 +58,7 @@
 	// Y-axis max, rounded up to next $100 for tidy gridlines. At least $100.
 	const maxCents = $derived(Math.max(10_000, ...allPoints.map((p) => p.cents)));
 	const yMax = $derived(Math.ceil(maxCents / 10_000) * 10_000);
+	const minCents = $derived(Math.min(...allPoints.map((p) => p.cents)));
 
 	// SVG geometry. Left pad for Y-axis labels, bottom pad for year labels.
 	const WIDTH = 560;
@@ -86,6 +103,23 @@
 			return { aptType: t, color: COLORS[t], path, points };
 		}).filter((l) => l.points.length > 0)
 	);
+	const activeAptTypes = $derived(lines.map((line) => line.aptType));
+	const chartDesc = $derived.by(() => {
+		if (!hasData) return `${title} has no historical FMR data.`;
+		const activeLabels = activeAptTypes.map((t) => APT_TYPE_LABEL[t]).join(', ');
+		return `${title} from ${minYear} to ${maxYear} for ${activeLabels}. Values range from ${formatCentsAsDollars(minCents)} to ${formatCentsAsDollars(maxCents)}. Each apartment type uses a distinct line pattern, and the full data is available in the table below.`;
+	});
+	const tableRows = $derived(
+		years.map((year) => ({
+			year,
+			values: Object.fromEntries(
+				activeAptTypes.map((t) => [
+					t,
+					(seriesByAptType[t] ?? []).find((point) => point.year === year)?.cents ?? null
+				])
+			) as Record<AptType, number | null>
+		}))
+	);
 
 	// Gridlines at 0, 25%, 50%, 75%, 100% of yMax.
 	const gridLines = $derived(
@@ -116,11 +150,23 @@
 			{#each APT_TYPES as t (t)}
 				{#if (seriesByAptType[t] ?? []).length > 0}
 					<span class="inline-flex items-center gap-1.5">
-						<span
-							class="inline-block rounded-full"
-							style="width: 8px; height: 8px; background: {COLORS[t]};"
+						<svg
+							class="h-2.5 w-7"
+							viewBox="0 0 28 10"
 							aria-hidden="true"
-						></span>
+							focusable="false"
+						>
+							<line
+								x1="1"
+								x2="27"
+								y1="5"
+								y2="5"
+								stroke={COLORS[t]}
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-dasharray={DASHES[t] ?? undefined}
+							/>
+						</svg>
 						<span>{shortLabel[t]}</span>
 					</span>
 				{/if}
@@ -128,11 +174,15 @@
 		</div>
 
 		<svg
+			role="img"
 			viewBox="0 0 {WIDTH} {height}"
 			preserveAspectRatio="none"
 			style="height: {height}px; width: 100%;"
-			aria-label="HUD FMR history by apartment type"
+			aria-labelledby="{chartTitleId} {chartDescId}"
 		>
+			<title id={chartTitleId}>{title}</title>
+			<desc id={chartDescId}>{chartDesc}</desc>
+
 			<!-- Gridlines + Y labels -->
 			{#each gridLines as g, i (i)}
 				<line
@@ -166,6 +216,7 @@
 					stroke-width={1.75}
 					stroke-linejoin="round"
 					stroke-linecap="round"
+					stroke-dasharray={DASHES[line.aptType] ?? undefined}
 					vector-effect="non-scaling-stroke"
 				/>
 				{#each line.points as p, i (i)}
@@ -191,5 +242,39 @@
 				</text>
 			{/each}
 		</svg>
+		<details class="mt-1 text-sm text-slate-600">
+			<summary class="cursor-pointer text-xs font-medium text-slate-600">
+				View {title} data
+			</summary>
+			<div class="mt-2 overflow-x-auto">
+				<table class="w-full text-sm">
+					<caption class="sr-only">{title} data</caption>
+					<thead>
+						<tr class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+							<th scope="col" class="py-2 pr-4 font-medium">Year</th>
+							{#each activeAptTypes as t (t)}
+								<th scope="col" class="py-2 pr-4 text-right font-medium">
+									{shortLabel[t]}
+								</th>
+							{/each}
+						</tr>
+					</thead>
+					<tbody>
+						{#each tableRows as row (row.year)}
+							<tr class="border-b border-slate-100 last:border-0">
+								<th scope="row" class="py-2 pr-4 text-left font-medium text-slate-900">
+									{row.year}
+								</th>
+								{#each activeAptTypes as t (t)}
+									<td class="py-2 pr-4 text-right tabular-nums text-slate-700">
+										{row.values[t] !== null ? formatCentsAsDollars(row.values[t]) : '—'}
+									</td>
+								{/each}
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</details>
 	{/if}
 </div>

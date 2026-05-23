@@ -119,6 +119,18 @@ async function seedAdminExploreZip() {
 				lat = excluded.lat,
 				lng = excluded.lng
 		`;
+		await sql`
+			insert into hud_fmr (year, county_fips, apt_type, fmr_cents)
+			values
+				(2024, '02020', 'studio', 110000),
+				(2025, '02020', 'studio', 115000),
+				(2024, '02020', '1br', 125000),
+				(2025, '02020', '1br', 132500),
+				(2024, '02020', '2br', 150000),
+				(2025, '02020', '2br', 158000)
+			on conflict (year, county_fips, apt_type) do update set
+				fmr_cents = excluded.fmr_cents
+		`;
 	} finally {
 		await sql.end({ timeout: 1 });
 	}
@@ -332,6 +344,23 @@ test.describe('accessibility smoke coverage', () => {
 			await seedAdminExploreZip();
 		});
 
+		test('/admin exposes a named submissions chart and data table alternative', async ({ page }) => {
+			await loginAsAdmin(page, '/admin');
+
+			const chart = page.getByRole('img', { name: /Submissions — last 30 days/ });
+			await expect(chart).toBeVisible();
+			await expect(chart.locator('title')).toHaveText('Submissions — last 30 days');
+			await expect(chart.locator('desc')).toContainText('Full data is available in the table below');
+
+			await page.getByText('View Submissions — last 30 days data').click();
+			const chartData = page.getByRole('table', { name: 'Submissions — last 30 days data' });
+			await expect(chartData).toBeVisible();
+			await expect(chartData.getByRole('columnheader', { name: 'Date' })).toBeVisible();
+			await expect(chartData.getByRole('columnheader', { name: 'Submissions' })).toBeVisible();
+
+			await scanPage(page);
+		});
+
 		test('/admin/explore exposes a named map and marker table alternative', async ({ page }) => {
 			await loginAsAdmin(page);
 
@@ -355,6 +384,42 @@ test.describe('accessibility smoke coverage', () => {
 			await expect(markerTable.getByRole('row', { name: /99501/ })).toContainText('No rent data');
 			await expect(markerTable.getByRole('cell', { name: '61.218' })).toBeVisible();
 			await expect(markerTable.getByRole('cell', { name: '-149.900' })).toBeVisible();
+
+			await scanPage(page);
+		});
+
+		test('/admin/explore exposes accessible FMR chart data and non-color series cues', async ({
+			page
+		}) => {
+			await loginAsAdmin(page);
+
+			await page.getByRole('textbox', { name: 'ZIP code' }).fill(adminExploreZip);
+			await page.getByRole('button', { name: 'Look up' }).click();
+
+			const chart = page.getByRole('img', { name: /HUD FMR history by apartment type/ });
+			await expect(chart).toBeVisible();
+			await expect(chart.locator('title')).toHaveText('HUD FMR history by apartment type');
+			await expect(chart.locator('desc')).toContainText('distinct line pattern');
+
+			const patternedSeries = chart.locator('path[stroke-dasharray]');
+			await expect(patternedSeries).toHaveCount(2);
+
+			await expect(page.getByText('Studio', { exact: true })).toBeVisible();
+			await expect(page.getByText('1 BR', { exact: true })).toBeVisible();
+			await expect(page.getByText('2 BR', { exact: true })).toBeVisible();
+			await expect(page.locator('svg[aria-hidden="true"] line[stroke-dasharray]')).toHaveCount(2);
+
+			await page.getByText('View HUD FMR history by apartment type data').click();
+			const chartData = page.getByRole('table', {
+				name: 'HUD FMR history by apartment type data'
+			});
+			await expect(chartData).toBeVisible();
+			await expect(chartData.getByRole('columnheader', { name: 'Year' })).toBeVisible();
+			await expect(chartData.getByRole('columnheader', { name: 'Studio' })).toBeVisible();
+			await expect(chartData.getByRole('columnheader', { name: '1 BR' })).toBeVisible();
+			await expect(chartData.getByRole('columnheader', { name: '2 BR' })).toBeVisible();
+			await expect(chartData.getByRole('row', { name: /2024/ })).toContainText('$1,100');
+			await expect(chartData.getByRole('row', { name: /2025/ })).toContainText('$1,580');
 
 			await scanPage(page);
 		});

@@ -14,9 +14,20 @@
 	}
 
 	const { points, title, height = 160 }: Props = $props();
+	const uid = $props.id();
 
 	const maxY = $derived(Math.max(1, ...points.map((p) => p.y)));
 	const hasData = $derived(points.some((p) => p.y > 0));
+	const chartTitle = $derived(title ?? 'Line chart');
+	const chartTitleId = $derived(`${uid}-title`);
+	const chartDescId = $derived(`${uid}-desc`);
+	const chartDesc = $derived.by(() => {
+		if (points.length === 0) return `${chartTitle} has no data points.`;
+		const first = points[0].x;
+		const last = points[points.length - 1].x;
+		if (!hasData) return `${chartTitle} from ${first} to ${last}; no submissions in this window.`;
+		return `${chartTitle} from ${first} to ${last}; peak value is ${maxY}. Full data is available in the table below.`;
+	});
 
 	const WIDTH = 400;
 	const PAD_B = 18;
@@ -56,11 +67,15 @@
 		<div class="text-sm text-slate-400 py-6 text-center">No data</div>
 	{:else}
 		<svg
+			role="img"
 			viewBox="0 0 {WIDTH} {height}"
 			preserveAspectRatio="none"
 			style="height: {height}px; width: 100%;"
-			aria-label={title ?? 'line chart'}
+			aria-labelledby="{chartTitleId} {chartDescId}"
 		>
+			<title id={chartTitleId}>{chartTitle}</title>
+			<desc id={chartDescId}>{chartDesc}</desc>
+
 			<!-- axis baseline -->
 			<line
 				x1={0}
@@ -94,5 +109,31 @@
 		{#if !hasData}
 			<div class="text-xs text-slate-400">No submissions in this window</div>
 		{/if}
+		<details class="mt-1 text-sm text-slate-600">
+			<summary class="cursor-pointer text-xs font-medium text-slate-600">
+				View {chartTitle} data
+			</summary>
+			<div class="mt-2 overflow-x-auto">
+				<table class="w-full text-sm">
+					<caption class="sr-only">{chartTitle} data</caption>
+					<thead>
+						<tr class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+							<th scope="col" class="py-2 pr-4 font-medium">Date</th>
+							<th scope="col" class="py-2 text-right font-medium">Submissions</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each points as point (point.x)}
+							<tr class="border-b border-slate-100 last:border-0">
+								<th scope="row" class="py-2 pr-4 text-left font-medium text-slate-900">
+									{point.x}
+								</th>
+								<td class="py-2 text-right tabular-nums text-slate-700">{point.y}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</details>
 	{/if}
 </div>
