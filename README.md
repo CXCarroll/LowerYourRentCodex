@@ -25,6 +25,14 @@ bun test
 bun run check
 ```
 
+## Cost estimation
+
+To estimate the monthly Railway and vendor cost for 10,000 completed negotiation flows, follow `docs/railway-cost-estimation.md` and run:
+
+```sh
+bun run cost:estimate samples/railway-cost-measurement.example.json
+```
+
 For a clean-room dependency verification, remove generated install artifacts first:
 
 ```sh

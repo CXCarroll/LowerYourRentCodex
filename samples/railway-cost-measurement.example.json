@@ -1,0 +1,45 @@
+{
+	"targetCompletedFlows": 10000,
+	"monthMinutes": 43200,
+	"railwayPlan": "hobby",
+	"idleBaseline": {
+		"measuredMinutes": 1440,
+		"app": {
+			"cpuVcpuMinutes": 1.2,
+			"memoryGbMinutes": 288,
+			"egressGb": 0.01,
+			"volumeStorageGbMinutes": 0
+		},
+		"postgres": {
+			"cpuVcpuMinutes": 0.8,
+			"memoryGbMinutes": 432,
+			"egressGb": 0.01,
+			"volumeStorageGbMinutes": 1440
+		}
+	},
+	"calibration": {
+		"completedFlows": 100,
+		"app": {
+			"cpuVcpuMinutes": 2.5,
+			"memoryGbMinutes": 30,
+			"egressGb": 0.08,
+			"volumeStorageGbMinutes": 0
+		},
+		"postgres": {
+			"cpuVcpuMinutes": 1.1,
+			"memoryGbMinutes": 15,
+			"egressGb": 0.02,
+			"volumeStorageGbMinutes": 0
+		},
+		"mapboxTemporaryGeocodingRequests": 350,
+		"resendTransactionalEmails": 100,
+		"turnstileVerifications": 100
+	},
+	"scenarios": {
+		"high": {
+			"mapboxRequestsPerFlow": 8,
+			"resendEmailsPerFlow": 2,
+			"note": "Replace mapboxRequestsPerFlow with the observed p95 autocomplete request count plus one submit-time check."
+		}
+	}
+}

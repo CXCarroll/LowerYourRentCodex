@@ -24,6 +24,7 @@
 		"seed:templates": "bun run scripts/seed-email-templates.ts",
 		"seed:all": "bun run scripts/seed-all.ts",
 		"admin:password": "bun run scripts/admin-set-password.ts",
+		"cost:estimate": "bun run scripts/estimate-railway-cost.ts",
 		"test": "bun test",
 		"test:a11y:axe": "playwright test --config playwright.a11y.config.ts",
 		"test:a11y:pa11y": "bun run scripts/a11y/with-preview.ts -- pa11y-ci --config .pa11yci.json",
