@@ -3,6 +3,7 @@ import { assertDb } from '$lib/server/db/client';
 import { blogPosts } from '$lib/server/db/schema';
 import { ensureUniqueSlug, slugify } from '$lib/server/blog/slug';
 import { validateOptionalPublicImageUrl } from '$lib/server/blog/url';
+import { validateBlogMarkdownAccessibility } from '$lib/shared/blog-markdown-a11y';
 
 function trimOrNull(v: FormDataEntryValue | null, max: number): string | null {
 	if (typeof v !== 'string') return null;
@@ -34,6 +35,7 @@ export const actions: Actions = {
 		const coverImageUrlInput = trimOrNull(data.get('coverImageUrl'), 1000);
 		const coverImageUrl = validateOptionalPublicImageUrl(coverImageUrlInput);
 		const content = trim(data.get('content'), 100_000);
+		const markdownIssues = validateBlogMarkdownAccessibility(content);
 
 		if (!title)
 			return fail(400, {
@@ -42,7 +44,8 @@ export const actions: Actions = {
 				slugInput,
 				excerpt,
 				coverImageUrl: coverImageUrlInput,
-				content
+				content,
+				markdownIssues
 			});
 		if (!content)
 			return fail(400, {
@@ -51,7 +54,8 @@ export const actions: Actions = {
 				slugInput,
 				excerpt,
 				coverImageUrl: coverImageUrlInput,
-				content
+				content,
+				markdownIssues
 			});
 		if (coverImageUrlInput && !coverImageUrl)
 			return fail(400, {
@@ -60,7 +64,8 @@ export const actions: Actions = {
 				slugInput,
 				excerpt,
 				coverImageUrl: coverImageUrlInput,
-				content
+				content,
+				markdownIssues
 			});
 
 		const base = slugify(slugInput || title);

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageProps } from './$types';
 	import BlogPostForm from '$lib/components/admin/BlogPostForm.svelte';
+	import type { BlogMarkdownA11yIssue } from '$lib/shared/blog-markdown-a11y';
 
 	let { form }: PageProps = $props();
 
@@ -20,6 +21,14 @@
 			? (form.message as string)
 			: null
 	);
+	let markdownIssues = $derived(
+		form &&
+			typeof form === 'object' &&
+			'markdownIssues' in form &&
+			Array.isArray(form.markdownIssues)
+			? (form.markdownIssues as BlogMarkdownA11yIssue[])
+			: []
+	);
 </script>
 
 <section class="space-y-6">
@@ -31,5 +40,5 @@
 		<a href="/admin/blog" class="text-sm text-slate-500 hover:underline">← Back to posts</a>
 	</header>
 
-	<BlogPostForm post={initial} mode="new" {errorMessage} />
+	<BlogPostForm post={initial} mode="new" {errorMessage} {markdownIssues} />
 </section>

@@ -11,6 +11,7 @@
 		"http://127.0.0.1:4173/",
 		"http://127.0.0.1:4173/search",
 		"http://127.0.0.1:4173/learn",
+		"http://127.0.0.1:4173/learn/a11y-markdown-fixture",
 		"http://127.0.0.1:4173/admin/login"
 	]
 }

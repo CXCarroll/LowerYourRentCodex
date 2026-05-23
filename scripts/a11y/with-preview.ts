@@ -1,3 +1,5 @@
+import postgres from 'postgres';
+
 const args = Bun.argv.slice(2).filter((arg) => arg !== '--');
 
 if (args.length === 0) {
@@ -11,6 +13,7 @@ const baseURL = `http://${host}:${port}`;
 const adminPasswordHash =
 	Bun.env.ADMIN_PASSWORD_HASH ??
 	'$argon2id$v=19$m=65536,t=3,p=1$StxhtxHMkIsybhnLYyM4+g$xXx00N/Uoeqt0sbdbMSsizJgF74Dhi/VDutZIvyay6w';
+const blogA11ySlug = 'a11y-markdown-fixture';
 
 async function run(command: string[], label: string) {
 	const child = Bun.spawn(command, {
@@ -39,7 +42,57 @@ async function waitForServer() {
 	throw new Error(`Timed out waiting for ${baseURL}: ${String(lastError)}`);
 }
 
+async function seedA11yFixtures() {
+	const databaseUrl = Bun.env.DATABASE_URL;
+	if (!databaseUrl) return;
+
+	const sql = postgres(databaseUrl, { max: 1, idle_timeout: 1 });
+	try {
+		await sql`
+			insert into blog_posts (
+				slug,
+				title,
+				excerpt,
+				cover_image_url,
+				content,
+				status,
+				published_at,
+				updated_at
+			)
+			values (
+				${blogA11ySlug},
+				'Accessibility markdown fixture',
+				'Fixture article for accessibility checks.',
+				null,
+				${`# Renewal overview
+
+Body copy before the image.
+
+![Tenant reviewing a lease renewal letter](/favicon.png)
+
+## Compare nearby rents
+
+More body copy.`},
+				'published',
+				now(),
+				now()
+			)
+			on conflict (slug) do update set
+				title = excluded.title,
+				excerpt = excluded.excerpt,
+				cover_image_url = excluded.cover_image_url,
+				content = excluded.content,
+				status = excluded.status,
+				published_at = excluded.published_at,
+				updated_at = excluded.updated_at
+		`;
+	} finally {
+		await sql.end({ timeout: 1 });
+	}
+}
+
 await run(['bun', 'run', 'build'], 'build');
+await seedA11yFixtures();
 
 const preview = Bun.spawn(
 	['bun', 'run', 'preview', '--', '--host', host, '--port', String(port)],

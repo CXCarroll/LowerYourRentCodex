@@ -1,7 +1,7 @@
 const host = '127.0.0.1';
 const port = Number(process.env.A11Y_PORT ?? 4173);
 const baseURL = `http://${host}:${port}`;
-const routes = ['/', '/search', '/learn', '/admin/login'];
+const routes = ['/', '/search', '/learn', '/learn/a11y-markdown-fixture', '/admin/login'];
 const minScore = Number(process.env.LIGHTHOUSE_A11Y_MIN_SCORE ?? 0.95);
 const reportDir = '.cache/lighthouse-a11y';
 

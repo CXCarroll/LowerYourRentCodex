@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { renderMarkdown } from '../../src/lib/server/blog/render';
 import { isSafePublicUrl, validateOptionalPublicImageUrl } from '../../src/lib/server/blog/url';
+import { validateBlogMarkdownAccessibility } from '../../src/lib/shared/blog-markdown-a11y';
 
 describe('renderMarkdown', () => {
 	test('renders common Markdown used by blog posts', () => {
 		const html = renderMarkdown(`
-## Renewal basics
+# Renewal basics
 
 Read the [guide](/learn/renewal-guide).
 
@@ -24,6 +25,38 @@ rent = 2400
 		expect(html).toContain('<img src="https://example.com/building.jpg" alt="Apartment building">');
 		expect(html).toContain('<li>Compare nearby rents</li>');
 		expect(html).toContain('<pre><code>rent = 2400');
+	});
+
+	test('normalizes article body headings to start below the page h1', () => {
+		const html = renderMarkdown(`
+# Body heading
+## Section heading
+##### Deep heading
+###### Capped heading
+`);
+
+		expect(html).toContain('<h2>Body heading</h2>');
+		expect(html).toContain('<h3>Section heading</h3>');
+		expect(html).toContain('<h6>Deep heading</h6>');
+		expect(html).toContain('<h6>Capped heading</h6>');
+		expect(html).not.toContain('<h1>');
+		expect(html).not.toContain('<h7>');
+	});
+
+	test('removes raw h1 HTML from article body content', () => {
+		const html = renderMarkdown(`
+Before
+
+<h1>Raw heading</h1>
+
+After
+`);
+
+		expect(html).toContain('Before');
+		expect(html).toContain('Raw heading');
+		expect(html).toContain('After');
+		expect(html).not.toContain('<h1');
+		expect(html).not.toContain('</h1>');
 	});
 
 	test('removes scriptable raw HTML', () => {
@@ -81,6 +114,44 @@ After
 		expect(html).not.toContain('javascript:');
 		expect(html).not.toContain('data:');
 		expect(html).not.toContain('src="//');
+	});
+});
+
+describe('blog Markdown accessibility validation', () => {
+	test('allows Markdown images with descriptive alt text', () => {
+		const issues = validateBlogMarkdownAccessibility(`
+![Tenant reviewing a renewal offer at a kitchen table](/images/renewal.jpg)
+`);
+
+		expect(issues).toEqual([]);
+	});
+
+	test('rejects empty or whitespace-only image alt text', () => {
+		const issues = validateBlogMarkdownAccessibility(`
+![](/images/empty.jpg)
+![   ](/images/space.jpg)
+`);
+
+		expect(issues.map((issue) => issue.code)).toEqual([
+			'image-alt-empty',
+			'image-alt-empty'
+		]);
+	});
+
+	test('rejects generic, filename-like, URL-like, and overlong image alt text', () => {
+		const issues = validateBlogMarkdownAccessibility(`
+![image](/images/generic.jpg)
+![rent-chart.png](/images/file.jpg)
+![https://example.com/rent.jpg](/images/url.jpg)
+![${'A'.repeat(151)}](/images/long.jpg)
+`);
+
+		expect(issues.map((issue) => issue.code)).toEqual([
+			'image-alt-generic',
+			'image-alt-filename',
+			'image-alt-filename',
+			'image-alt-too-long'
+		]);
 	});
 });
 

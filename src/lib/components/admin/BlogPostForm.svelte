@@ -4,6 +4,10 @@
 	// actions are wired up and which submit buttons to show.
 
 	import { untrack } from 'svelte';
+	import {
+		validateBlogMarkdownAccessibility,
+		type BlogMarkdownA11yIssue
+	} from '$lib/shared/blog-markdown-a11y';
 	import { slugify } from '$lib/shared/slugify';
 
 	type Status = 'draft' | 'published';
@@ -23,9 +27,17 @@
 		errorMessage?: string | null;
 		/** Whether to render an inline "Saved" banner after a successful action. */
 		savedFlash?: boolean;
+		/** Server-reported Markdown accessibility issues from a failed action. */
+		markdownIssues?: BlogMarkdownA11yIssue[];
 	}
 
-	let { post, mode, errorMessage = null, savedFlash = false }: Props = $props();
+	let {
+		post,
+		mode,
+		errorMessage = null,
+		savedFlash = false,
+		markdownIssues = []
+	}: Props = $props();
 
 	// Local form state — initialized once from the prop. Using `untrack` makes
 	// the one-shot capture explicit so Svelte doesn't warn about referencing
@@ -36,12 +48,21 @@
 	let excerpt = $state(untrack(() => post.excerpt));
 	let coverImageUrl = $state(untrack(() => post.coverImageUrl));
 	let content = $state(untrack(() => post.content));
+	let initialContent = untrack(() => post.content);
 
 	// Pre-existing slugs (edit mode) are considered "dirty" so the auto-fill
 	// from title doesn't clobber them.
 	let slugDirty = $state(untrack(() => mode === 'edit' && post.slug.length > 0));
 
 	let slugLocked = $derived(post.status === 'published');
+	let contentIssues = $derived(
+		content === initialContent && markdownIssues.length > 0
+			? markdownIssues
+			: validateBlogMarkdownAccessibility(content)
+	);
+	let contentDescription = $derived(
+		contentIssues.length > 0 ? 'post-content-help post-content-a11y' : 'post-content-help'
+	);
 
 	function onTitleInput(e: Event) {
 		const v = (e.target as HTMLInputElement).value;
@@ -168,12 +189,33 @@
 			class="field-input font-mono text-sm"
 			rows="18"
 			required
+			aria-describedby={contentDescription}
+			aria-invalid={contentIssues.length > 0 ? 'true' : undefined}
 			placeholder={'## A subheading\n\nWrite your post in **markdown**.\n\n- Bullet lists work\n- [Links too](https://example.com)\n'}
 			bind:value={content}
 		></textarea>
-		<p class="text-xs text-slate-500">
+		<p id="post-content-help" class="text-xs text-slate-500">
 			Markdown supported (GitHub-flavored). Headings, lists, links, images, code, blockquotes.
 		</p>
+		<div id="post-content-a11y" aria-live="polite">
+			{#if contentIssues.length > 0}
+				<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+					<p class="font-medium">Fix Markdown image alt text before publishing.</p>
+					<ul class="mt-2 list-disc space-y-1 pl-5">
+						{#each contentIssues as issue}
+							<li>
+								{issue.message}
+								{#if issue.altText}
+									<span class="text-amber-800">Current alt: “{issue.altText}”.</span>
+								{:else}
+									<span class="text-amber-800">One image has empty alt text.</span>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	<div class="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-5">

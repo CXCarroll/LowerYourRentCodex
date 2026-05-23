@@ -8,10 +8,19 @@ import DOMPurify, { type Config, type UponSanitizeAttributeHook } from 'isomorph
 import { marked } from 'marked';
 import { isSafePublicUrl } from './url';
 
-marked.setOptions({
+const markdownOptions = {
 	gfm: true,
 	breaks: false
-});
+};
+
+marked.setOptions(markdownOptions);
+
+const renderer = new marked.Renderer();
+
+renderer.heading = function ({ tokens, depth }) {
+	const normalizedDepth = Math.min(depth + 1, 6);
+	return `<h${normalizedDepth}>${this.parser.parseInline(tokens)}</h${normalizedDepth}>\n`;
+};
 
 const allowedTags = [
 	'a',
@@ -21,7 +30,6 @@ const allowedTags = [
 	'code',
 	'del',
 	'em',
-	'h1',
 	'h2',
 	'h3',
 	'h4',
@@ -64,6 +72,6 @@ const restrictUrlAttributes: UponSanitizeAttributeHook = (_node, data) => {
 DOMPurify.addHook('uponSanitizeAttribute', restrictUrlAttributes);
 
 export function renderMarkdown(md: string): string {
-	const html = marked.parse(md ?? '', { async: false }) as string;
+	const html = marked.parse(md ?? '', { ...markdownOptions, async: false, renderer }) as string;
 	return DOMPurify.sanitize(html, sanitizeConfig);
 }

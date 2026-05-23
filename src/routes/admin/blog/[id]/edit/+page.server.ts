@@ -5,6 +5,10 @@ import { assertDb } from '$lib/server/db/client';
 import { blogPosts } from '$lib/server/db/schema';
 import { ensureUniqueSlug, slugify } from '$lib/server/blog/slug';
 import { validateOptionalPublicImageUrl } from '$lib/server/blog/url';
+import {
+	validateBlogMarkdownAccessibility,
+	type BlogMarkdownA11yIssue
+} from '$lib/shared/blog-markdown-a11y';
 
 function trim(v: FormDataEntryValue | null, max: number): string {
 	if (typeof v !== 'string') return '';
@@ -24,6 +28,24 @@ async function loadPost(id: string) {
 	return rows[0];
 }
 
+function invalidForm(
+	message: string,
+	input: {
+		title: string;
+		slugInput: string;
+		excerpt: string | null;
+		coverImageUrl: string | null;
+		content: string;
+		markdownIssues?: BlogMarkdownA11yIssue[];
+	}
+) {
+	return {
+		message,
+		...input,
+		markdownIssues: input.markdownIssues ?? validateBlogMarkdownAccessibility(input.content)
+	};
+}
+
 export const load: PageServerLoad = async ({ params }) => {
 	const post = await loadPost(params.id);
 	return { post };
@@ -36,20 +58,41 @@ export const actions: Actions = {
 		const data = await request.formData();
 
 		const title = trim(data.get('title'), 200);
+		const slugInput =
+			existing.status === 'draft' ? trim(data.get('slug'), 120) : existing.slug;
 		const excerpt = trimOrNull(data.get('excerpt'), 300);
 		const coverImageUrlInput = trimOrNull(data.get('coverImageUrl'), 1000);
 		const coverImageUrl = validateOptionalPublicImageUrl(coverImageUrlInput);
 		const content = trim(data.get('content'), 100_000);
+		const markdownIssues = validateBlogMarkdownAccessibility(content);
+		const formInput = {
+			title,
+			slugInput,
+			excerpt,
+			coverImageUrl: coverImageUrlInput,
+			content,
+			markdownIssues
+		};
 
-		if (!title) return fail(400, { message: 'Title is required.' });
-		if (!content) return fail(400, { message: 'Content is required.' });
+		if (!title) return fail(400, invalidForm('Title is required.', formInput));
+		if (!content) return fail(400, invalidForm('Content is required.', formInput));
 		if (coverImageUrlInput && !coverImageUrl)
-			return fail(400, { message: 'Cover image URL must be relative, http, or https.' });
+			return fail(
+				400,
+				invalidForm('Cover image URL must be relative, http, or https.', formInput)
+			);
+		if (existing.status === 'published' && markdownIssues.length > 0)
+			return fail(
+				400,
+				invalidForm(
+					'Fix Markdown image alt text before saving changes to a published post.',
+					formInput
+				)
+			);
 
 		// Slug is only writable while the post is a draft.
 		let nextSlug = existing.slug;
 		if (existing.status === 'draft') {
-			const slugInput = trim(data.get('slug'), 120);
 			const base = slugify(slugInput || title);
 			if (base !== existing.slug) {
 				nextSlug = await ensureUniqueSlug(base, existing.id);
@@ -78,21 +121,39 @@ export const actions: Actions = {
 		const data = await request.formData();
 
 		const title = trim(data.get('title'), 200);
+		const slugInput =
+			existing.status === 'draft' ? trim(data.get('slug'), 120) : existing.slug;
 		const excerpt = trimOrNull(data.get('excerpt'), 300);
 		const coverImageUrlInput = trimOrNull(data.get('coverImageUrl'), 1000);
 		const coverImageUrl = validateOptionalPublicImageUrl(coverImageUrlInput);
 		const content = trim(data.get('content'), 100_000);
+		const markdownIssues = validateBlogMarkdownAccessibility(content);
+		const formInput = {
+			title,
+			slugInput,
+			excerpt,
+			coverImageUrl: coverImageUrlInput,
+			content,
+			markdownIssues
+		};
 
-		if (!title) return fail(400, { message: 'Title is required.' });
-		if (!content) return fail(400, { message: 'Content is required.' });
+		if (!title) return fail(400, invalidForm('Title is required.', formInput));
+		if (!content) return fail(400, invalidForm('Content is required.', formInput));
 		if (coverImageUrlInput && !coverImageUrl)
-			return fail(400, { message: 'Cover image URL must be relative, http, or https.' });
+			return fail(
+				400,
+				invalidForm('Cover image URL must be relative, http, or https.', formInput)
+			);
+		if (markdownIssues.length > 0)
+			return fail(
+				400,
+				invalidForm('Fix Markdown image alt text before publishing.', formInput)
+			);
 
 		// Allow last slug edit on the publish transition (post is still a draft
 		// at this point), then lock thereafter.
 		let nextSlug = existing.slug;
 		if (existing.status === 'draft') {
-			const slugInput = trim(data.get('slug'), 120);
 			const base = slugify(slugInput || title);
 			if (base !== existing.slug) {
 				nextSlug = await ensureUniqueSlug(base, existing.id);

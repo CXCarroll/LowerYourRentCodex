@@ -5,6 +5,7 @@ import postgres from 'postgres';
 const publicRoutes = ['/', '/search', '/learn'];
 const adminA11yPassword = process.env.ADMIN_A11Y_PASSWORD ?? 'a11y-admin-password';
 const adminExploreZip = '99501';
+const blogA11ySlug = 'a11y-markdown-fixture';
 
 async function gotoOk(page: Page, route: string) {
 	const response = await page.goto(route);
@@ -136,6 +137,55 @@ async function seedAdminExploreZip() {
 	}
 }
 
+async function seedPublishedBlogPost() {
+	const databaseUrl = process.env.DATABASE_URL;
+	if (!databaseUrl) return;
+
+	const sql = postgres(databaseUrl, { max: 1, idle_timeout: 1 });
+	try {
+		await sql`
+			insert into blog_posts (
+				slug,
+				title,
+				excerpt,
+				cover_image_url,
+				content,
+				status,
+				published_at,
+				updated_at
+			)
+			values (
+				${blogA11ySlug},
+				'Accessibility markdown fixture',
+				'Fixture article for accessibility checks.',
+				null,
+				${`# Renewal overview
+
+Body copy before the image.
+
+![Tenant reviewing a lease renewal letter](/favicon.png)
+
+## Compare nearby rents
+
+More body copy.`},
+				'published',
+				now(),
+				now()
+			)
+			on conflict (slug) do update set
+				title = excluded.title,
+				excerpt = excluded.excerpt,
+				cover_image_url = excluded.cover_image_url,
+				content = excluded.content,
+				status = excluded.status,
+				published_at = excluded.published_at,
+				updated_at = excluded.updated_at
+		`;
+	} finally {
+		await sql.end({ timeout: 1 });
+	}
+}
+
 test.describe('accessibility smoke coverage', () => {
 	test.describe.configure({ mode: 'serial' });
 
@@ -212,6 +262,26 @@ test.describe('accessibility smoke coverage', () => {
 				'page'
 			);
 		}
+	});
+
+	test('published blog article preserves heading hierarchy and image names', async ({ page }) => {
+		test.skip(!process.env.DATABASE_URL, 'Blog article route checks require DATABASE_URL.');
+		await seedPublishedBlogPost();
+
+		await gotoOk(page, `/learn/${blogA11ySlug}`);
+		await expect(page.locator('body')).toBeVisible();
+
+		await expect(page.locator('main h1')).toHaveCount(1);
+		await expect(page.locator('.blog-prose h1')).toHaveCount(0);
+		await expect(page.getByRole('heading', { level: 2, name: 'Renewal overview' })).toBeVisible();
+		await expect(
+			page.getByRole('heading', { level: 3, name: 'Compare nearby rents' })
+		).toBeVisible();
+		await expect(
+			page.getByRole('img', { name: 'Tenant reviewing a lease renewal letter' })
+		).toBeVisible();
+
+		await scanPage(page);
 	});
 
 	test('segmented selectors expose native radio groups', async ({ page }) => {
@@ -421,6 +491,38 @@ test.describe('accessibility smoke coverage', () => {
 			await expect(chartData.getByRole('row', { name: /2024/ })).toContainText('$1,100');
 			await expect(chartData.getByRole('row', { name: /2025/ })).toContainText('$1,580');
 
+			await scanPage(page);
+		});
+
+		test('/admin/blog editor warns on bad image alt text and blocks publishing', async ({ page }) => {
+			await loginAsAdmin(page, '/admin/blog/new');
+
+			await page.locator('#post-title').fill(`Alt text fixture ${Date.now()}`);
+			await page.locator('#post-content').fill(`Draft body.
+
+![image](/favicon.png)
+`);
+
+			await expect(page.locator('#post-content-a11y')).toContainText(
+				'Image alt text should describe the specific image'
+			);
+			await page.getByRole('button', { name: 'Create draft' }).click();
+			await expect(page).toHaveURL(/\/admin\/blog\/[^/]+\/edit$/);
+
+			await page.getByRole('button', { name: 'Publish' }).click();
+			await expect(page.getByText('Fix Markdown image alt text before publishing.')).toBeVisible();
+			await expect(page.locator('#post-content')).toHaveAttribute('aria-invalid', 'true');
+
+			await page.locator('#post-content').fill(`Draft body.
+
+![Tenant reviewing a lease renewal letter](/favicon.png)
+`);
+			await expect(page.locator('#post-content-a11y')).not.toContainText(
+				'Image alt text should describe the specific image'
+			);
+
+			await page.getByRole('button', { name: 'Publish' }).click();
+			await expect(page.getByRole('link', { name: /View on \/learn/ })).toBeVisible();
 			await scanPage(page);
 		});
 	});

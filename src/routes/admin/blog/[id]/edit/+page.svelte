@@ -1,16 +1,30 @@
 <script lang="ts">
 	import type { PageProps } from './$types';
 	import BlogPostForm from '$lib/components/admin/BlogPostForm.svelte';
+	import type { BlogMarkdownA11yIssue } from '$lib/shared/blog-markdown-a11y';
 
 	let { data, form }: PageProps = $props();
 
+	type ReturnedBlogFields = {
+		title?: string;
+		slugInput?: string;
+		excerpt?: string | null;
+		coverImageUrl?: string | null;
+		content?: string;
+		markdownIssues?: BlogMarkdownA11yIssue[];
+	};
+
+	let returnedFields = $derived(
+		form && typeof form === 'object' && 'content' in form ? (form as ReturnedBlogFields) : null
+	);
+
 	let initial = $derived({
 		id: data.post.id,
-		title: data.post.title,
-		slug: data.post.slug,
-		excerpt: data.post.excerpt ?? '',
-		coverImageUrl: data.post.coverImageUrl ?? '',
-		content: data.post.content,
+		title: returnedFields?.title ?? data.post.title,
+		slug: returnedFields?.slugInput ?? data.post.slug,
+		excerpt: returnedFields?.excerpt ?? data.post.excerpt ?? '',
+		coverImageUrl: returnedFields?.coverImageUrl ?? data.post.coverImageUrl ?? '',
+		content: returnedFields?.content ?? data.post.content,
 		status: data.post.status
 	});
 
@@ -21,6 +35,9 @@
 	);
 	let savedFlash = $derived(
 		!!(form && typeof form === 'object' && 'saved' in form && form.saved === true)
+	);
+	let markdownIssues = $derived(
+		Array.isArray(returnedFields?.markdownIssues) ? returnedFields.markdownIssues : []
 	);
 
 	let statusLabel = $derived(data.post.status === 'published' ? 'Published' : 'Draft');
@@ -44,5 +61,5 @@
 		<a href="/admin/blog" class="text-sm text-slate-500 hover:underline">← Back to posts</a>
 	</header>
 
-	<BlogPostForm post={initial} mode="edit" {errorMessage} {savedFlash} />
+	<BlogPostForm post={initial} mode="edit" {errorMessage} {savedFlash} {markdownIssues} />
 </section>

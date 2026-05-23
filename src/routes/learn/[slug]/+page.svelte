@@ -111,6 +111,15 @@
 		color: rgba(30, 30, 40, 0.7);
 		margin: 18px 0 6px;
 	}
+	.blog-prose :global(h5),
+	.blog-prose :global(h6) {
+		font-family: var(--font-sans);
+		font-weight: 600;
+		font-size: 14px;
+		line-height: 1.35;
+		color: rgba(30, 30, 40, 0.76);
+		margin: 16px 0 6px;
+	}
 	.blog-prose :global(p) {
 		margin: 0 0 14px;
 	}
