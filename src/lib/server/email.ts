@@ -15,6 +15,7 @@ import { Resend } from 'resend';
 import { env } from './env';
 
 const SUBJECT = 'Your Lower Your Rent verification code';
+let resendClient: Resend | null = null;
 
 function textBody(code: string): string {
 	return `Your Lower Your Rent verification code is ${code}
@@ -53,7 +54,7 @@ export async function sendVerificationCode(email: string, code: string): Promise
 	}
 
 	try {
-		const resend = new Resend(env.RESEND_API_KEY);
+		const resend = (resendClient ??= new Resend(env.RESEND_API_KEY));
 		const { error } = await resend.emails.send({
 			from: env.EMAIL_FROM,
 			to: email,

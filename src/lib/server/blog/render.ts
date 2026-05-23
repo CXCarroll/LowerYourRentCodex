@@ -71,7 +71,33 @@ const restrictUrlAttributes: UponSanitizeAttributeHook = (_node, data) => {
 
 DOMPurify.addHook('uponSanitizeAttribute', restrictUrlAttributes);
 
+const RENDER_CACHE_LIMIT = 100;
+const renderCache = new Map<string, string>();
+
 export function renderMarkdown(md: string): string {
 	const html = marked.parse(md ?? '', { ...markdownOptions, async: false, renderer }) as string;
 	return DOMPurify.sanitize(html, sanitizeConfig);
 }
+
+export function renderCachedMarkdown(id: string, updatedAt: Date, md: string): string {
+	const key = `${id}:${updatedAt.getTime()}`;
+	const cached = renderCache.get(key);
+	if (cached !== undefined) {
+		renderCache.delete(key);
+		renderCache.set(key, cached);
+		return cached;
+	}
+
+	const html = renderMarkdown(md);
+	renderCache.set(key, html);
+	if (renderCache.size > RENDER_CACHE_LIMIT) {
+		const oldest = renderCache.keys().next().value;
+		if (oldest !== undefined) renderCache.delete(oldest);
+	}
+	return html;
+}
+
+export const __test = {
+	cacheSize: () => renderCache.size,
+	clearCache: () => renderCache.clear()
+};

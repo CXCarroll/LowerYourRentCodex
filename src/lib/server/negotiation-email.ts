@@ -10,9 +10,9 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db/client';
 import { emailTemplates } from '$lib/server/db/schema';
-import { getZipInsight } from '$lib/server/admin/zip-explorer';
 import { geocodeAddressToZip } from '$lib/server/geocode';
-import { computeProposal } from '$lib/server/proposal';
+import { loadNegotiationMarketData } from '$lib/server/negotiation-market-data';
+import { computeProposalFromMarketData } from '$lib/server/proposal';
 import type { AptType } from '$lib/shared/apt-types';
 import {
 	AGGRESSIVENESS_REDUCTION_FRACTION,
@@ -49,6 +49,9 @@ interface BuildInput {
 	rentCents: number;
 	/** Optional ZIP already resolved by the submission pipeline. */
 	zip?: string;
+	/** Optional geography already resolved by the submission pipeline. */
+	countyFips?: string | null;
+	cbsaCode?: string | null;
 }
 
 // Demo fallback used when real vacancy data is unavailable for a metro.
@@ -60,7 +63,7 @@ function roundTo100(cents: number): number {
 }
 
 export async function buildNegotiationEmail(
-	{ address, aptType, rentCents, zip: resolvedZip }: BuildInput,
+	{ address, aptType, rentCents, zip: resolvedZip, countyFips, cbsaCode }: BuildInput,
 	fetchFn: typeof fetch
 ): Promise<{ versions: NegotiationVersion[] }> {
 	// ── 1. Rent-derived figures (always available, never throw) ──────────────
@@ -85,35 +88,29 @@ export async function buildNegotiationEmail(
 	try {
 		zip = zip ?? (await geocodeAddressToZip(address, fetchFn));
 		if (zip) {
-			const insight = await getZipInsight(zip);
-			if (insight) {
-				if (insight.acsMedianGrossRentCents != null) {
-					medianCents = insight.acsMedianGrossRentCents;
+			const marketData = await loadNegotiationMarketData({ zip, aptType, countyFips, cbsaCode });
+			if (marketData) {
+				if (marketData.acsMedianCents != null) {
+					medianCents = marketData.acsMedianCents;
 				}
-				if (insight.latestVacancyPct != null) {
-					vacancyPct = insight.latestVacancyPct;
+				if (marketData.latestVacancyPct != null) {
+					vacancyPct = marketData.latestVacancyPct;
 				}
-				const fmr = insight.hudFmrCentsByAptType[aptType];
-				if (fmr != null) fmrCents = fmr;
-				if (insight.permitsHistory.length > 0) {
-					const recent = insight.permitsHistory.slice(-5);
-					units5yr = recent.reduce((sum, p) => sum + p.units5plus, 0);
-					permitsFirstYear = recent[0].year;
-					permitsLastYear = recent[recent.length - 1].year;
+				if (marketData.fmrCents != null) fmrCents = marketData.fmrCents;
+				if (marketData.recentPermits5Plus != null) {
+					units5yr = marketData.recentPermits5Plus;
+					permitsFirstYear = marketData.recentPermitsFirstYear;
+					permitsLastYear = marketData.recentPermitsLastYear;
 				}
 
 				// Data-driven proposal: percentile distribution of recent
 				// comps, blended with ACS/FMR and adjusted for metro vacancy.
-				// Reuses the county + CBSA getZipInsight already resolved.
 				// Adopt it only when it actually beats the current rent — the
 				// model caps its target at current rent, and an email that
 				// "proposes" the rent already paid is useless.
-				const proposal = await computeProposal({
+				const proposal = computeProposalFromMarketData({
 					currentRentCents: currentCents,
-					aptType,
-					zip,
-					countyFips: insight.countyFips,
-					cbsaCode: insight.cbsaCode
+					marketData
 				});
 				if (proposal && proposal.targetCents < currentCents) {
 					proposedCents = proposal.targetCents;

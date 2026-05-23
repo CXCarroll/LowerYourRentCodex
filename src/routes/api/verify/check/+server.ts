@@ -68,10 +68,13 @@ function createRequestTimings() {
 			.join(', ');
 	}
 
-	function log(response: Response, error?: unknown): void {
-		const timingsMs = Object.fromEntries(
-			entries.map(({ name, durationMs }) => [name, roundTiming(durationMs)])
-		);
+		function log(response: Response, error?: unknown): void {
+			const sampleRate = env.VERIFY_CHECK_TIMING_SAMPLE_RATE;
+			if (response.status < 500 && (sampleRate <= 0 || Math.random() >= sampleRate)) return;
+
+			const timingsMs = Object.fromEntries(
+				entries.map(({ name, durationMs }) => [name, roundTiming(durationMs)])
+			);
 
 		console.info(
 			JSON.stringify({
@@ -248,13 +251,15 @@ export function _createVerifyCheckPost(deps: VerifyCheckDeps): RequestHandler {
 		({ versions } = await timings.time('negotiation_email_generation', () =>
 			deps.buildNegotiationEmail(
 				{
-					address: normalized.building,
-					aptType: submission.aptType,
-					rentCents: submission.rentCents,
-					zip: zipInfo.zip
-				},
-				fetch
-			)
+						address: normalized.building,
+						aptType: submission.aptType,
+						rentCents: submission.rentCents,
+						zip: zipInfo.zip,
+						countyFips: zipInfo.countyFips,
+						cbsaCode: zipInfo.cbsaCode
+					},
+					fetch
+				)
 		));
 	} catch {
 		return respond(

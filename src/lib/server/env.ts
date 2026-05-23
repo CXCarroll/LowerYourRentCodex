@@ -83,30 +83,51 @@ const schema = z.object({
 		.string()
 		.optional()
 		.transform((v) => v === 'true' || v === '1'),
+	VERIFY_CHECK_TIMING_SAMPLE_RATE: z
+		.string()
+		.optional()
+		.transform((v, ctx) => {
+			if (v === undefined || v === '') return undefined;
+			const n = Number(v);
+			if (!Number.isFinite(n) || n < 0 || n > 1) {
+				ctx.addIssue({
+					code: 'custom',
+					message: 'VERIFY_CHECK_TIMING_SAMPLE_RATE must be a number from 0 to 1.'
+				});
+				return z.NEVER;
+			}
+			return n;
+		}),
 	NODE_ENV: z.enum(['development', 'production', 'test']).default('development')
 });
 
-function load() {
+export function parseEnv(input: Record<string, string | undefined>, isBuilding = building) {
 	const parsed = schema.safeParse({
-		DATABASE_URL: privateEnv.DATABASE_URL,
-		ADMIN_PASSWORD_HASH: privateEnv.ADMIN_PASSWORD_HASH,
-		TURNSTILE_SECRET_KEY: privateEnv.TURNSTILE_SECRET_KEY,
-		MAPBOX_TOKEN: privateEnv.MAPBOX_TOKEN,
-		RESEND_API_KEY: privateEnv.RESEND_API_KEY,
-		EMAIL_FROM: privateEnv.EMAIL_FROM,
-		EMAIL_PEPPER: privateEnv.EMAIL_PEPPER,
-		RATE_LIMIT_PEPPER: privateEnv.RATE_LIMIT_PEPPER,
-		TRUST_CF_CONNECTING_IP: privateEnv.TRUST_CF_CONNECTING_IP,
-		TRUSTED_PROXY_CIDRS: privateEnv.TRUSTED_PROXY_CIDRS,
-		DEMO_MODE: privateEnv.DEMO_MODE,
-		NODE_ENV: privateEnv.NODE_ENV
+		DATABASE_URL: input.DATABASE_URL,
+		ADMIN_PASSWORD_HASH: input.ADMIN_PASSWORD_HASH,
+		TURNSTILE_SECRET_KEY: input.TURNSTILE_SECRET_KEY,
+		MAPBOX_TOKEN: input.MAPBOX_TOKEN,
+		RESEND_API_KEY: input.RESEND_API_KEY,
+		EMAIL_FROM: input.EMAIL_FROM,
+		EMAIL_PEPPER: input.EMAIL_PEPPER,
+		RATE_LIMIT_PEPPER: input.RATE_LIMIT_PEPPER,
+		TRUST_CF_CONNECTING_IP: input.TRUST_CF_CONNECTING_IP,
+		TRUSTED_PROXY_CIDRS: input.TRUSTED_PROXY_CIDRS,
+		DEMO_MODE: input.DEMO_MODE,
+		VERIFY_CHECK_TIMING_SAMPLE_RATE: input.VERIFY_CHECK_TIMING_SAMPLE_RATE,
+		NODE_ENV: input.NODE_ENV
 	});
 	if (!parsed.success) {
 		console.error('Invalid environment variables:', parsed.error.flatten().fieldErrors);
 		throw new Error('Refusing to boot with invalid environment. See errors above.');
 	}
 
-	const data = parsed.data;
+	const data = {
+		...parsed.data,
+		VERIFY_CHECK_TIMING_SAMPLE_RATE:
+			parsed.data.VERIFY_CHECK_TIMING_SAMPLE_RATE ??
+			(parsed.data.NODE_ENV === 'production' ? 0.05 : 1)
+	};
 
 	// Several vars have dev-only fallbacks that are unsafe in production: a
 	// missing DB silently no-ops every query; a missing pepper hashes emails +
@@ -118,7 +139,7 @@ function load() {
 	// Skipped while `building`: `vite build` (and its postbuild analyse step)
 	// runs with NODE_ENV=production but has no runtime secrets, so the guard is
 	// a runtime-only check, not a build-time one.
-	if (!building && data.NODE_ENV === 'production') {
+	if (!isBuilding && data.NODE_ENV === 'production') {
 		// DEMO_MODE makes the negotiate flow run with no external services, so
 		// their keys are no longer boot-required (see DEMO_MODE in the schema).
 		const required: Record<string, unknown> = {
@@ -140,7 +161,7 @@ function load() {
 		}
 	}
 
-	if (!building && data.DEMO_MODE) {
+	if (!isBuilding && data.DEMO_MODE) {
 		console.warn(
 			'[DEMO_MODE] Negotiate flow has NO external dependencies: Resend skipped, ' +
 				'verification code is the fixed string "123456", Turnstile bypassed. ' +
@@ -149,6 +170,24 @@ function load() {
 	}
 
 	return data;
+}
+
+function load() {
+	return parseEnv({
+		DATABASE_URL: privateEnv.DATABASE_URL,
+		ADMIN_PASSWORD_HASH: privateEnv.ADMIN_PASSWORD_HASH,
+		TURNSTILE_SECRET_KEY: privateEnv.TURNSTILE_SECRET_KEY,
+		MAPBOX_TOKEN: privateEnv.MAPBOX_TOKEN,
+		RESEND_API_KEY: privateEnv.RESEND_API_KEY,
+		EMAIL_FROM: privateEnv.EMAIL_FROM,
+		EMAIL_PEPPER: privateEnv.EMAIL_PEPPER,
+		RATE_LIMIT_PEPPER: privateEnv.RATE_LIMIT_PEPPER,
+		TRUST_CF_CONNECTING_IP: privateEnv.TRUST_CF_CONNECTING_IP,
+		TRUSTED_PROXY_CIDRS: privateEnv.TRUSTED_PROXY_CIDRS,
+		DEMO_MODE: privateEnv.DEMO_MODE,
+		VERIFY_CHECK_TIMING_SAMPLE_RATE: privateEnv.VERIFY_CHECK_TIMING_SAMPLE_RATE,
+		NODE_ENV: privateEnv.NODE_ENV
+	});
 }
 
 export const env = load();

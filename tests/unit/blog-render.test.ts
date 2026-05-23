@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { renderMarkdown } from '../../src/lib/server/blog/render';
+import { __test as renderTest, renderCachedMarkdown, renderMarkdown } from '../../src/lib/server/blog/render';
 import { isSafePublicUrl, validateOptionalPublicImageUrl } from '../../src/lib/server/blog/url';
 import { validateBlogMarkdownAccessibility } from '../../src/lib/shared/blog-markdown-a11y';
 
@@ -114,6 +114,32 @@ After
 		expect(html).not.toContain('javascript:');
 		expect(html).not.toContain('data:');
 		expect(html).not.toContain('src="//');
+	});
+});
+
+describe('renderCachedMarkdown', () => {
+	test('returns equivalent sanitized HTML and caches by post version', () => {
+		renderTest.clearCache();
+		const updatedAt = new Date('2026-01-01T00:00:00Z');
+		const md = '[Safe](/learn) <script>alert(1)</script>';
+
+		const direct = renderMarkdown(md);
+		const first = renderCachedMarkdown('post-1', updatedAt, md);
+		const second = renderCachedMarkdown('post-1', updatedAt, md);
+
+		expect(first).toBe(direct);
+		expect(second).toBe(first);
+		expect(first).not.toContain('<script');
+		expect(renderTest.cacheSize()).toBe(1);
+	});
+
+	test('evicts oldest entries after 100 cached post versions', () => {
+		renderTest.clearCache();
+		for (let i = 0; i < 101; i++) {
+			renderCachedMarkdown(`post-${i}`, new Date(Date.UTC(2026, 0, 1, 0, 0, i)), `# ${i}`);
+		}
+
+		expect(renderTest.cacheSize()).toBe(100);
 	});
 });
 

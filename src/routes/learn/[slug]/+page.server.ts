@@ -3,7 +3,7 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { assertDb } from '$lib/server/db/client';
 import { blogPosts } from '$lib/server/db/schema';
-import { renderMarkdown } from '$lib/server/blog/render';
+import { renderCachedMarkdown } from '$lib/server/blog/render';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const db = assertDb();
@@ -21,7 +21,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			excerpt: post.excerpt,
 			coverImageUrl: post.coverImageUrl,
 			publishedAt: post.publishedAt,
-			html: renderMarkdown(post.content)
+			html: renderCachedMarkdown(post.id, post.updatedAt, post.content)
 		}
 	};
 };

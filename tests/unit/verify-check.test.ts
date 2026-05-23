@@ -255,6 +255,14 @@ describe('/api/verify/check', () => {
 		expect(res.status).toBe(200);
 		expect(body.versions).toHaveLength(1);
 		expect(callOrder).toEqual(['build', 'consume', 'insert']);
+		expect(buildNegotiationEmail).toHaveBeenCalledWith(
+			expect.objectContaining({
+				zip: '11201',
+				countyFips: '36047',
+				cbsaCode: '35620'
+			}),
+			expect.any(Function)
+		);
 		expect(consumeVerifiedCodeTx).toHaveBeenCalledWith(tx, 'tenant@example.com', '123456');
 		expect(insertSubmissionUnlessRecentDuplicateTx).toHaveBeenCalledWith(
 			tx,

@@ -2,7 +2,7 @@
 // Aggregates user submissions, ACS median rent, HUD FMR by apt type,
 // and the latest CBSA vacancy rate. All queries are indexed.
 
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, gt, sql } from 'drizzle-orm';
 import { assertDb } from '../db/client';
 import {
 	submissions,
@@ -98,11 +98,79 @@ export async function getZipInsight(zip: string): Promise<ZipInsight | null> {
 	const countyFips = zcRows[0].countyFips;
 	const cbsaCode = zcRows[0].cbsaCode;
 
-	// Submissions by apt_type for the last 365 days.
-	const subRows = await db
+	const subRowsPromise = db
 		.select({ aptType: submissions.aptType, rentCents: submissions.rentCents })
 		.from(submissions)
-		.where(eq(submissions.zip, zip));
+		.where(
+			and(eq(submissions.zip, zip), gt(submissions.createdAt, sql`now() - interval '365 days'`))
+		);
+	const acsRowsPromise = db
+		.select({ median: acsRent.medianGrossRentCents })
+		.from(acsRent)
+		.where(and(eq(acsRent.geoLevel, 'zcta'), eq(acsRent.geoId, zip)))
+		.orderBy(desc(acsRent.year))
+		.limit(1);
+	const histRowsPromise = countyFips
+		? db
+				.select({
+					year: hudFmr.year,
+					aptType: hudFmr.aptType,
+					cents: hudFmr.fmrCents
+				})
+				.from(hudFmr)
+				.where(eq(hudFmr.countyFips, countyFips))
+				.orderBy(hudFmr.aptType, hudFmr.year)
+		: Promise.resolve([]);
+	const vacRowsPromise = cbsaCode
+		? db
+				.select({
+					pct: vacancyRates.rentalVacancyPct,
+					year: vacancyRates.year,
+					quarter: vacancyRates.quarter
+				})
+				.from(vacancyRates)
+				.where(eq(vacancyRates.cbsaCode, cbsaCode))
+				.orderBy(vacancyRates.year, vacancyRates.quarter)
+		: Promise.resolve([]);
+	const permRowsPromise = cbsaCode
+		? db
+				.select({
+					year: buildingPermits.year,
+					month: buildingPermits.month,
+					units1: buildingPermits.units1,
+					units2: buildingPermits.units2,
+					units34: buildingPermits.units34,
+					units5plus: buildingPermits.units5plus
+				})
+				.from(buildingPermits)
+				.where(eq(buildingPermits.cbsaCode, cbsaCode))
+				.orderBy(buildingPermits.year, buildingPermits.month)
+		: Promise.resolve([]);
+	const popRowsPromise = cbsaCode
+		? db
+				.select({ year: cbsaPopulation.year, population: cbsaPopulation.population })
+				.from(cbsaPopulation)
+				.where(eq(cbsaPopulation.cbsaCode, cbsaCode))
+				.orderBy(cbsaPopulation.year)
+		: Promise.resolve([]);
+	const centroidPromise = (async (): Promise<{ lat: number; lng: number } | null> => {
+		try {
+			const cached = await db
+				.select({ lat: zipCentroids.lat, lng: zipCentroids.lng })
+				.from(zipCentroids)
+				.where(eq(zipCentroids.zip, zip))
+				.limit(1);
+			if (cached.length > 0) {
+				return { lat: Number(cached[0].lat), lng: Number(cached[0].lng) };
+			}
+			return await resolveZipCentroid(zip);
+		} catch {
+			return null;
+		}
+	})();
+
+	// Submissions by apt_type for the last 365 days.
+	const subRows = await subRowsPromise;
 
 	const submissionCount = subRows.length;
 	const medianRentCentsByAptType = Object.fromEntries(
@@ -115,12 +183,7 @@ export async function getZipInsight(zip: string): Promise<ZipInsight | null> {
 	for (const t of APT_TYPES) medianRentCentsByAptType[t] = median(bucketed[t]);
 
 	// Latest ACS median for the ZCTA.
-	const acsRows = await db
-		.select({ median: acsRent.medianGrossRentCents })
-		.from(acsRent)
-		.where(and(eq(acsRent.geoLevel, 'zcta'), eq(acsRent.geoId, zip)))
-		.orderBy(desc(acsRent.year))
-		.limit(1);
+	const acsRows = await acsRowsPromise;
 	const acsMedianGrossRentCents = acsRows[0]?.median ?? null;
 
 	// Full HUD FMR history for this county, one query for all apt types + years.
@@ -131,15 +194,7 @@ export async function getZipInsight(zip: string): Promise<ZipInsight | null> {
 		APT_TYPES.map((t) => [t, [] as Array<{ year: number; cents: number }>])
 	) as Record<AptType, Array<{ year: number; cents: number }>>;
 	if (countyFips) {
-		const histRows = await db
-			.select({
-				year: hudFmr.year,
-				aptType: hudFmr.aptType,
-				cents: hudFmr.fmrCents
-			})
-			.from(hudFmr)
-			.where(eq(hudFmr.countyFips, countyFips))
-			.orderBy(hudFmr.aptType, hudFmr.year);
+		const histRows = await histRowsPromise;
 		for (const row of histRows) {
 			const t = row.aptType as AptType;
 			if (!hudFmrHistoryByAptType[t]) continue;
@@ -157,15 +212,7 @@ export async function getZipInsight(zip: string): Promise<ZipInsight | null> {
 	let latestVacancyPeriod: { year: number; quarter: number } | null = null;
 	const vacancyHistory: Array<{ year: number; quarter: number; pct: number }> = [];
 	if (cbsaCode) {
-		const vacRows = await db
-			.select({
-				pct: vacancyRates.rentalVacancyPct,
-				year: vacancyRates.year,
-				quarter: vacancyRates.quarter
-			})
-			.from(vacancyRates)
-			.where(eq(vacancyRates.cbsaCode, cbsaCode))
-			.orderBy(vacancyRates.year, vacancyRates.quarter);
+		const vacRows = await vacRowsPromise;
 		for (const r of vacRows) {
 			const pct = Number(r.pct);
 			if (Number.isFinite(pct)) {
@@ -189,18 +236,7 @@ export async function getZipInsight(zip: string): Promise<ZipInsight | null> {
 	}> = [];
 	let permitsSummary: ZipInsight['permitsSummary'] = null;
 	if (cbsaCode) {
-		const permRows = await db
-			.select({
-				year: buildingPermits.year,
-				month: buildingPermits.month,
-				units1: buildingPermits.units1,
-				units2: buildingPermits.units2,
-				units34: buildingPermits.units34,
-				units5plus: buildingPermits.units5plus
-			})
-			.from(buildingPermits)
-			.where(eq(buildingPermits.cbsaCode, cbsaCode))
-			.orderBy(buildingPermits.year, buildingPermits.month);
+		const permRows = await permRowsPromise;
 
 		// Prefer annual rows (month = 0); fall back to summing monthly rows.
 		const byYear = new Map<
@@ -261,11 +297,7 @@ export async function getZipInsight(zip: string): Promise<ZipInsight | null> {
 	const populationHistory: Array<{ year: number; population: number }> = [];
 	let populationSummary: ZipInsight['populationSummary'] = null;
 	if (cbsaCode) {
-		const popRows = await db
-			.select({ year: cbsaPopulation.year, population: cbsaPopulation.population })
-			.from(cbsaPopulation)
-			.where(eq(cbsaPopulation.cbsaCode, cbsaCode))
-			.orderBy(cbsaPopulation.year);
+		const popRows = await popRowsPromise;
 		for (const r of popRows) populationHistory.push({ year: r.year, population: r.population });
 
 		if (populationHistory.length > 0) {
@@ -321,27 +353,9 @@ export async function getZipInsight(zip: string): Promise<ZipInsight | null> {
 	}
 
 	// Centroid (best-effort; null on failure).
-	let lat: number | null = null;
-	let lng: number | null = null;
-	try {
-		const cached = await db
-			.select({ lat: zipCentroids.lat, lng: zipCentroids.lng })
-			.from(zipCentroids)
-			.where(eq(zipCentroids.zip, zip))
-			.limit(1);
-		if (cached.length > 0) {
-			lat = Number(cached[0].lat);
-			lng = Number(cached[0].lng);
-		} else {
-			const resolved = await resolveZipCentroid(zip);
-			if (resolved) {
-				lat = resolved.lat;
-				lng = resolved.lng;
-			}
-		}
-	} catch {
-		// Centroid is a nice-to-have; data card still renders.
-	}
+	const centroid = await centroidPromise;
+	const lat = centroid?.lat ?? null;
+	const lng = centroid?.lng ?? null;
 
 	return {
 		zip,

@@ -91,7 +91,10 @@ export const vacancyRates = pgTable(
 		cbsaCode: char('cbsa_code', { length: 5 }).notNull(),
 		rentalVacancyPct: numeric('rental_vacancy_pct', { precision: 4, scale: 2 }).notNull()
 	},
-	(t) => [primaryKey({ columns: [t.year, t.quarter, t.cbsaCode] })]
+	(t) => [
+		primaryKey({ columns: [t.year, t.quarter, t.cbsaCode] }),
+		index('vacancy_rates_cbsa_period_idx').on(t.cbsaCode, t.year, t.quarter)
+	]
 );
 
 // Census Building Permits Survey (BPS) — annual + monthly housing units
@@ -110,7 +113,10 @@ export const buildingPermits = pgTable(
 		units34: integer('units_3_4').notNull().default(0),
 		units5plus: integer('units_5_plus').notNull().default(0)
 	},
-	(t) => [primaryKey({ columns: [t.year, t.month, t.cbsaCode] })]
+	(t) => [
+		primaryKey({ columns: [t.year, t.month, t.cbsaCode] }),
+		index('building_permits_cbsa_period_idx').on(t.cbsaCode, t.year, t.month)
+	]
 );
 
 // Census Population Estimates Program (PEP) — annual CBSA-level population.
@@ -123,7 +129,10 @@ export const cbsaPopulation = pgTable(
 		cbsaCode: char('cbsa_code', { length: 5 }).notNull(),
 		population: integer('population').notNull()
 	},
-	(t) => [primaryKey({ columns: [t.year, t.cbsaCode] })]
+	(t) => [
+		primaryKey({ columns: [t.year, t.cbsaCode] }),
+		index('cbsa_population_cbsa_year_idx').on(t.cbsaCode, t.year)
+	]
 );
 
 export const zipCounty = pgTable('zip_county', {
@@ -155,16 +164,20 @@ export const adminSessions = pgTable(
 );
 
 // Lightweight audit log of admin CSV uploads. No raw CSV bytes stored.
-export const adminUploads = pgTable('admin_uploads', {
-	id: uuid('id').defaultRandom().primaryKey(),
-	kind: text('kind').notNull(), // e.g. 'vacancy_rates'
-	filename: text('filename').notNull(),
-	fileSha256: text('file_sha256').notNull(),
-	rowCount: integer('row_count').notNull(),
-	insertCount: integer('insert_count').notNull(),
-	updateCount: integer('update_count').notNull(),
-	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
-});
+export const adminUploads = pgTable(
+	'admin_uploads',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		kind: text('kind').notNull(), // e.g. 'vacancy_rates'
+		filename: text('filename').notNull(),
+		fileSha256: text('file_sha256').notNull(),
+		rowCount: integer('row_count').notNull(),
+		insertCount: integer('insert_count').notNull(),
+		updateCount: integer('update_count').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+	},
+	(t) => [index('admin_uploads_created_at_idx').on(t.createdAt)]
+);
 
 // Durable two-step admin upload staging. Parsed rows live here briefly so
 // dry-run and commit can be handled by different app replicas.
