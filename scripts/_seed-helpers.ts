@@ -1,6 +1,6 @@
 // Shared helpers for seed scripts. Scripts are Bun CLI entrypoints, NOT imported by the app.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -24,23 +24,41 @@ export function getDb() {
 export async function fetchWithCache(
 	url: string,
 	cacheName: string,
-	{ asText = false }: { asText?: boolean } = {}
+	{ asText = false, accept }: { asText?: boolean; accept?: string } = {}
 ): Promise<Buffer | string> {
 	const cachePath = join(CACHE_DIR, cacheName);
 	if (existsSync(cachePath)) {
 		log('cache', `hit: ${cacheName}`);
-		return asText ? readFileSync(cachePath, 'utf8') : readFileSync(cachePath);
+		const cached = readFileSync(cachePath);
+		if (!looksLikeHtml(cached)) {
+			return asText ? cached.toString('utf8') : cached;
+		}
+		log('cache', `discarding HTML response cached as ${cacheName}`);
+		unlinkSync(cachePath);
 	}
 	log('fetch', url);
 	mkdirSync(dirname(cachePath), { recursive: true });
-	const res = await fetch(url);
+	const res = await fetch(url, {
+		headers: {
+			'User-Agent': 'LowerYourRent seed scripts (contact: admin)',
+			Accept: accept ?? '*/*'
+		}
+	});
 	if (!res.ok) {
 		throw new Error(`Fetch failed ${res.status} for ${url}`);
 	}
 	const buf = Buffer.from(await res.arrayBuffer());
+	if (looksLikeHtml(buf)) {
+		throw new Error(`Fetch returned HTML instead of data for ${url}`);
+	}
 	writeFileSync(cachePath, buf);
 	log('cache', `saved: ${cacheName} (${(buf.length / 1024 / 1024).toFixed(1)} MB)`);
 	return asText ? buf.toString('utf8') : buf;
+}
+
+function looksLikeHtml(buf: Buffer): boolean {
+	const text = buf.subarray(0, 256).toString('utf8').trimStart().toLowerCase();
+	return text.startsWith('<!doctype html') || text.startsWith('<html') || text.startsWith('<');
 }
 
 // Insert in chunks to avoid enormous single INSERTs.

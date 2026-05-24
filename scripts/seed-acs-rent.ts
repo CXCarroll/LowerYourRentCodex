@@ -13,7 +13,7 @@ import { sql } from 'drizzle-orm';
 import { acsRent } from '../src/lib/server/db/schema';
 import { chunk, fetchWithCache, getDb, log, zip5 } from './_seed-helpers';
 
-const YEARS_TO_TRY = [2022, 2021, 2020];
+const YEARS_TO_TRY = [2024, 2023, 2022, 2021, 2020];
 
 interface AcsRow {
 	year: number;
@@ -24,11 +24,16 @@ interface AcsRow {
 }
 
 async function fetchYear(year: number): Promise<AcsRow[]> {
-	// no API key required for reasonable volumes
-	const url =
-		`https://api.census.gov/data/${year}/acs/acs5?` +
-		`get=B25064_001E,B25001_001E&for=zip%20code%20tabulation%20area:*`;
-	const text = (await fetchWithCache(url, `acs_b25064_${year}.json`, { asText: true })) as string;
+	const params = new URLSearchParams({
+		get: 'B25064_001E,B25001_001E',
+		for: 'zip code tabulation area:*'
+	});
+	if (process.env.CENSUS_API_KEY) params.set('key', process.env.CENSUS_API_KEY);
+	const url = `https://api.census.gov/data/${year}/acs/acs5?${params.toString()}`;
+	const text = (await fetchWithCache(url, `acs_b25064_${year}.json`, {
+		asText: true,
+		accept: 'application/json'
+	})) as string;
 	const arr = JSON.parse(text) as unknown[][];
 	if (!Array.isArray(arr) || arr.length < 2) return [];
 	const [header, ...rows] = arr;
