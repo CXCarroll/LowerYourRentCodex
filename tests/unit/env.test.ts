@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 
 mock.module('$env/dynamic/private', () => ({ env: process.env }));
+mock.module('$env/dynamic/public', () => ({ env: process.env }));
 mock.module('$app/environment', () => ({ building: false }));
 
 const { parseEnv } = await import('../../src/lib/server/env');
@@ -34,5 +35,41 @@ describe('parseEnv VERIFY_CHECK_TIMING_SAMPLE_RATE', () => {
 		} finally {
 			console.error = originalConsoleError;
 		}
+	});
+});
+
+describe('parseEnv production requirements', () => {
+	const productionBase = {
+		NODE_ENV: 'production',
+		DATABASE_URL: 'postgres://user:pass@example.com:5432/db',
+		EMAIL_PEPPER: 'pepper',
+		RESEND_API_KEY: 'resend',
+		EMAIL_FROM: 'Lower Your Rent <verify@example.com>',
+		TURNSTILE_SECRET_KEY: 'turnstile-secret'
+	};
+
+	test('requires the public Turnstile site key when production Turnstile is enforced', () => {
+		expect(() => parseEnv(productionBase, false)).toThrow('PUBLIC_TURNSTILE_SITE_KEY');
+	});
+
+	test('accepts production when the Turnstile public and private keys are both present', () => {
+		expect(
+			parseEnv({ ...productionBase, PUBLIC_TURNSTILE_SITE_KEY: 'turnstile-site' }, false)
+				.PUBLIC_TURNSTILE_SITE_KEY
+		).toBe('turnstile-site');
+	});
+
+	test('does not require Turnstile keys in demo mode', () => {
+		expect(
+			parseEnv(
+				{
+					NODE_ENV: 'production',
+					DEMO_MODE: 'true',
+					DATABASE_URL: 'postgres://user:pass@example.com:5432/db',
+					EMAIL_PEPPER: 'pepper'
+				},
+				false
+			).DEMO_MODE
+		).toBe(true);
 	});
 });

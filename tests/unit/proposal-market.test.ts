@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 
 mock.module('$env/dynamic/private', () => ({ env: process.env }));
+mock.module('$env/dynamic/public', () => ({ env: process.env }));
 mock.module('$app/environment', () => ({ building: false }));
 
 const { computeProposalFromMarketData } = await import('../../src/lib/server/proposal');

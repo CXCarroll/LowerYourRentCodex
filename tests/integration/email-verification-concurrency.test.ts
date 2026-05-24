@@ -31,6 +31,7 @@ if (!process.env.DATABASE_URL) {
 			process.env.EMAIL_PEPPER = 'email-verification-concurrency-test-pepper';
 
 			mock.module('$env/dynamic/private', () => ({ env: process.env }));
+			mock.module('$env/dynamic/public', () => ({ env: process.env }));
 			mock.module('$app/environment', () => ({ building: false }));
 
 			modules = await loadModules();

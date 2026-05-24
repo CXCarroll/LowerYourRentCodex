@@ -43,6 +43,7 @@ const originalConsoleInfo = console.info;
 console.info = timingLog as unknown as typeof console.info;
 
 mock.module('$env/dynamic/private', () => ({ env: process.env }));
+mock.module('$env/dynamic/public', () => ({ env: process.env }));
 mock.module('$app/environment', () => ({ building: false }));
 
 const { _createVerifyCheckPost } = await import('../../src/routes/api/verify/check/+server');

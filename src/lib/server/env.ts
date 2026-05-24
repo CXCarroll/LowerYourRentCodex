@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { env as privateEnv } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 import { building } from '$app/environment';
 
 const schema = z.object({
@@ -17,6 +18,13 @@ const schema = z.object({
 	// protection (see the boot guard in load()). A blank `TURNSTILE_SECRET_KEY=`
 	// in .env parses as '' — coerce that to undefined so it's treated as unset.
 	TURNSTILE_SECRET_KEY: z
+		.string()
+		.optional()
+		.transform((v) => (v && v.length > 0 ? v : undefined)),
+	// Cloudflare Turnstile public site key. Client-side code reads this through
+	// `$env/dynamic/public` so missing test-deploy values do not break the build,
+	// but real production still requires the public + private pair together.
+	PUBLIC_TURNSTILE_SITE_KEY: z
 		.string()
 		.optional()
 		.transform((v) => (v && v.length > 0 ? v : undefined)),
@@ -106,6 +114,7 @@ export function parseEnv(input: Record<string, string | undefined>, isBuilding =
 		DATABASE_URL: input.DATABASE_URL,
 		ADMIN_PASSWORD_HASH: input.ADMIN_PASSWORD_HASH,
 		TURNSTILE_SECRET_KEY: input.TURNSTILE_SECRET_KEY,
+		PUBLIC_TURNSTILE_SITE_KEY: input.PUBLIC_TURNSTILE_SITE_KEY,
 		MAPBOX_TOKEN: input.MAPBOX_TOKEN,
 		RESEND_API_KEY: input.RESEND_API_KEY,
 		EMAIL_FROM: input.EMAIL_FROM,
@@ -150,6 +159,7 @@ export function parseEnv(input: Record<string, string | undefined>, isBuilding =
 			required.RESEND_API_KEY = data.RESEND_API_KEY;
 			required.EMAIL_FROM = data.EMAIL_FROM;
 			required.TURNSTILE_SECRET_KEY = data.TURNSTILE_SECRET_KEY;
+			required.PUBLIC_TURNSTILE_SITE_KEY = data.PUBLIC_TURNSTILE_SITE_KEY;
 		}
 		const missing = Object.entries(required)
 			.filter(([, v]) => !v)
@@ -177,6 +187,7 @@ function load() {
 		DATABASE_URL: privateEnv.DATABASE_URL,
 		ADMIN_PASSWORD_HASH: privateEnv.ADMIN_PASSWORD_HASH,
 		TURNSTILE_SECRET_KEY: privateEnv.TURNSTILE_SECRET_KEY,
+		PUBLIC_TURNSTILE_SITE_KEY: publicEnv.PUBLIC_TURNSTILE_SITE_KEY,
 		MAPBOX_TOKEN: privateEnv.MAPBOX_TOKEN,
 		RESEND_API_KEY: privateEnv.RESEND_API_KEY,
 		EMAIL_FROM: privateEnv.EMAIL_FROM,

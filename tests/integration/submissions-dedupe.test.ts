@@ -31,6 +31,7 @@ if (!process.env.DATABASE_URL) {
 		beforeAll(async () => {
 			process.env.NODE_ENV = 'test';
 			mock.module('$env/dynamic/private', () => ({ env: process.env }));
+			mock.module('$env/dynamic/public', () => ({ env: process.env }));
 			mock.module('$app/environment', () => ({ building: false }));
 
 			modules = await loadModules();

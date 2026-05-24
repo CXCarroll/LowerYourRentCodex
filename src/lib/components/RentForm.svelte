@@ -17,7 +17,7 @@
 	import InvisibleInk from '$lib/components/InvisibleInk.svelte';
 	import OtpInput from '$lib/components/OtpInput.svelte';
 	import Turnstile from '$lib/components/Turnstile.svelte';
-	import { PUBLIC_TURNSTILE_SITE_KEY } from '$env/static/public';
+	import { env as publicEnv } from '$env/dynamic/public';
 	import { reducedMotion } from '$lib/stores/motion.svelte';
 	import { emailSchema, rentInputToCents, submissionSchema } from '$lib/shared/validation';
 	import type { AptType } from '$lib/shared/apt-types';
@@ -135,7 +135,7 @@
 	// Inert when PUBLIC_TURNSTILE_SITE_KEY is unset (local dev): the component
 	// renders nothing and `turnstileToken` stays null, which the server treats
 	// as "check disabled" so the flow works unchanged.
-	const turnstileEnabled = !!PUBLIC_TURNSTILE_SITE_KEY;
+	const turnstileEnabled = !!publicEnv.PUBLIC_TURNSTILE_SITE_KEY;
 	let turnstileToken = $state<string | null>(null);
 	// Turnstile tokens are single-use. Bumping this key remounts the widget so
 	// a resend / second submit gets a fresh, unconsumed token.
