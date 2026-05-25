@@ -24,19 +24,30 @@ export function getDb() {
 export async function fetchWithCache(
 	url: string,
 	cacheName: string,
-	{ asText = false, accept }: { asText?: boolean; accept?: string } = {}
+	{
+		asText = false,
+		accept,
+		logUrl,
+		validate
+	}: {
+		asText?: boolean;
+		accept?: string;
+		logUrl?: string;
+		validate?: (text: string, buf: Buffer) => void;
+	} = {}
 ): Promise<Buffer | string> {
 	const cachePath = join(CACHE_DIR, cacheName);
 	if (existsSync(cachePath)) {
 		log('cache', `hit: ${cacheName}`);
 		const cached = readFileSync(cachePath);
 		if (!looksLikeHtml(cached)) {
+			if (validate) validate(cached.toString('utf8'), cached);
 			return asText ? cached.toString('utf8') : cached;
 		}
 		log('cache', `discarding HTML response cached as ${cacheName}`);
 		unlinkSync(cachePath);
 	}
-	log('fetch', url);
+	log('fetch', logUrl ?? url);
 	mkdirSync(dirname(cachePath), { recursive: true });
 	const res = await fetch(url, {
 		headers: {
@@ -51,6 +62,7 @@ export async function fetchWithCache(
 	if (looksLikeHtml(buf)) {
 		throw new Error(`Fetch returned HTML instead of data for ${url}`);
 	}
+	if (validate) validate(buf.toString('utf8'), buf);
 	writeFileSync(cachePath, buf);
 	log('cache', `saved: ${cacheName} (${(buf.length / 1024 / 1024).toFixed(1)} MB)`);
 	return asText ? buf.toString('utf8') : buf;

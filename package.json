@@ -18,6 +18,7 @@
 		"seed:zip": "bun run scripts/seed-zip-county.ts",
 		"seed:fmr": "bun run scripts/seed-hud-fmr.ts",
 		"seed:acs": "bun run scripts/seed-acs-rent.ts",
+		"seed:acs:api": "ACS_REQUIRE_API_KEY=true bun run scripts/seed-acs-rent.ts",
 		"seed:vacancy": "bun run scripts/seed-vacancy.ts",
 		"seed:permits": "bun run scripts/seed-permits.ts",
 		"seed:population": "bun run scripts/seed-population.ts",
