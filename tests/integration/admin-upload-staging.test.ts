@@ -54,6 +54,29 @@ if (!process.env.DATABASE_URL) {
 			});
 		}
 
+		function acsUpload(adminTokenHash = 'admin-token-a') {
+			return modules.staging.stageUpload({
+				kind: 'acs_rent',
+				adminTokenHash,
+				filename: 'acs.csv',
+				fileSha256: 'b'.repeat(64),
+				validRows: [
+					{
+						year: 2024,
+						geoLevel: 'zcta',
+						geoId: '11201',
+						medianGrossRentCents: 290_000,
+						sampleSize: 12_500
+					}
+				],
+				rowCount: 1,
+				errorCount: 0,
+				warningCount: 0,
+				insertCount: 1,
+				updateCount: 0
+			});
+		}
+
 		test('stages and reads upload rows from Postgres', async () => {
 			const staged = await vacancyUpload();
 			const peeked = await modules.staging.peekStaged(staged.id, staged.adminTokenHash);
@@ -62,6 +85,22 @@ if (!process.env.DATABASE_URL) {
 			expect(peeked?.kind).toBe('vacancy_rates');
 			expect(peeked?.validRows).toEqual(staged.validRows);
 			expect(peeked?.sample).toEqual(staged.validRows);
+		});
+
+		test('stages and consumes ACS rent rows from Postgres', async () => {
+			const staged = await acsUpload();
+			const peeked = await modules.staging.peekStaged(staged.id, staged.adminTokenHash);
+
+			expect(peeked?.id).toBe(staged.id);
+			expect(peeked?.kind).toBe('acs_rent');
+			expect(peeked?.validRows).toEqual(staged.validRows);
+
+			const consumed = await modules.db.transaction((tx) =>
+				modules.staging.consumeStaged(tx, staged.id, staged.adminTokenHash, 'acs_rent')
+			);
+			expect(consumed?.kind).toBe('acs_rent');
+			expect(consumed?.validRows).toEqual(staged.validRows);
+			expect(await modules.staging.peekStaged(staged.id, staged.adminTokenHash)).toBeNull();
 		});
 
 		test('does not expose staged rows to another admin token', async () => {

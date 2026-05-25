@@ -9,7 +9,8 @@
 		{ href: '/admin/blog', label: 'Blog' },
 		{ href: '/admin/templates', label: 'Templates' },
 		{ href: '/admin/explore', label: 'Explore ZIP' },
-		{ href: '/admin/download', label: 'Download HUD' },
+		{ href: '/admin/download', label: 'Download data' },
+		{ href: '/admin/upload/acs', label: 'Upload ACS' },
 		{ href: '/admin/upload/vacancy', label: 'Upload vacancy' },
 		{ href: '/admin/upload/fmr', label: 'Upload FMR' }
 	];

@@ -23,6 +23,7 @@
 		"seed:population": "bun run scripts/seed-population.ts",
 		"seed:templates": "bun run scripts/seed-email-templates.ts",
 		"seed:all": "bun run scripts/seed-all.ts",
+		"transform:acs": "bun run scripts/transform-acs-rent.ts",
 		"admin:password": "bun run scripts/admin-set-password.ts",
 		"cost:estimate": "bun run scripts/estimate-railway-cost.ts",
 		"test": "bun test",

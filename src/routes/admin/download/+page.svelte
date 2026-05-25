@@ -49,8 +49,8 @@
 		<div>
 			<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">Download HUD &amp; Census data</h1>
 			<p class="mt-1 text-sm text-slate-500">
-				Pulls FMR + SAFMR from HUD's public XLSX files and rental vacancy from
-				Census HVS. No API key required.
+				Convenience downloads for local/admin use. For Railway seeding, download official
+				source files manually, transform offline, then upload the normalized CSVs.
 			</p>
 		</div>
 		<a href="/admin" class="text-sm text-slate-500 hover:underline">← Dashboard</a>
@@ -207,6 +207,10 @@
 					On failure: a tiny CSV containing one or more <code>#</code>-prefixed
 					comment lines explaining what went wrong — open it in a text editor
 					to see every URL tried.
+				</p>
+				<p class="mt-2">
+					These server-side fetches are optional and may fail on hosted networks. The durable
+					path is a human browser download from the official source followed by admin upload.
 				</p>
 			</div>
 		</div>

@@ -57,8 +57,18 @@
 <section class="space-y-6">
 	<header class="flex items-baseline justify-between">
 		<h1 class="text-xl font-semibold tracking-tight text-slate-900" tabindex="-1">Dashboard</h1>
-		<a href="/admin/upload/vacancy" class="btn-primary text-sm">Upload vacancy CSV</a>
+		<div class="flex flex-wrap gap-2">
+			<a href="/admin/upload/acs" class="btn-secondary text-sm">Upload ACS CSV</a>
+			<a href="/admin/upload/fmr" class="btn-secondary text-sm">Upload FMR CSV</a>
+			<a href="/admin/upload/vacancy" class="btn-primary text-sm">Upload vacancy CSV</a>
+		</div>
 	</header>
+
+	<div class="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+		Seed data should be downloaded manually from official ACS/HUD/Census sources, transformed to
+		the normalized CSV shapes, and uploaded here. Railway-hosted downloads are convenience tools,
+		not the production seed path.
+	</div>
 
 	<!-- Submission metrics: 3 stat cards + 3 charts. -->
 	<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">

@@ -4,8 +4,9 @@ import { adminUploadStaging } from '$lib/server/db/schema';
 import { APT_TYPES } from '$lib/shared/apt-types';
 import type { VacancyRowInput } from './vacancy-csv';
 import type { FmrRowInput } from './fmr-csv';
+import type { AcsRentRowInput } from './acs-csv';
 
-export type StagedKind = 'vacancy_rates' | 'hud_fmr';
+export type StagedKind = 'vacancy_rates' | 'hud_fmr' | 'acs_rent';
 
 interface StagedCommon {
 	id: string;
@@ -33,7 +34,13 @@ export interface StagedFmrUpload extends StagedCommon {
 	sample: FmrRowInput[];
 }
 
-export type StagedUpload = StagedVacancyUpload | StagedFmrUpload;
+export interface StagedAcsRentUpload extends StagedCommon {
+	kind: 'acs_rent';
+	validRows: AcsRentRowInput[];
+	sample: AcsRentRowInput[];
+}
+
+export type StagedUpload = StagedVacancyUpload | StagedFmrUpload | StagedAcsRentUpload;
 
 const TTL_MS = 15 * 60 * 1000;
 const SAMPLE_LIMIT = 10;
@@ -43,7 +50,8 @@ type DbClient = ReturnType<typeof assertDb>;
 type TxClient = Parameters<Parameters<DbClient['transaction']>[0]>[0];
 type StagedVacancyInsert = Omit<StagedVacancyUpload, 'id' | 'createdAt' | 'expiresAt' | 'sample'>;
 type StagedFmrInsert = Omit<StagedFmrUpload, 'id' | 'createdAt' | 'expiresAt' | 'sample'>;
-type StagedInsert = StagedVacancyInsert | StagedFmrInsert;
+type StagedAcsRentInsert = Omit<StagedAcsRentUpload, 'id' | 'createdAt' | 'expiresAt' | 'sample'>;
+type StagedInsert = StagedVacancyInsert | StagedFmrInsert | StagedAcsRentInsert;
 type StagedRow = typeof adminUploadStaging.$inferSelect;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,6 +95,21 @@ function isFmrRows(value: unknown): value is FmrRowInput[] {
 	);
 }
 
+function isAcsRentRows(value: unknown): value is AcsRentRowInput[] {
+	return (
+		Array.isArray(value) &&
+		value.every(
+			(row) =>
+				isRecord(row) &&
+				isInteger(row.year) &&
+				row.geoLevel === 'zcta' &&
+				typeof row.geoId === 'string' &&
+				isInteger(row.medianGrossRentCents) &&
+				(row.sampleSize === null || isInteger(row.sampleSize))
+		)
+	);
+}
+
 function toStagedUpload(row: StagedRow): StagedUpload {
 	const common = {
 		id: row.id,
@@ -126,11 +149,24 @@ function toStagedUpload(row: StagedRow): StagedUpload {
 		};
 	}
 
+	if (row.kind === 'acs_rent') {
+		if (!isAcsRentRows(row.parsedPayload)) {
+			throw new Error('Staged ACS rent upload payload is malformed.');
+		}
+		return {
+			...common,
+			kind: 'acs_rent',
+			validRows: row.parsedPayload,
+			sample: row.parsedPayload.slice(0, SAMPLE_LIMIT)
+		};
+	}
+
 	throw new Error(`Unknown staged upload kind: ${row.kind}`);
 }
 
 export async function stageUpload(input: StagedVacancyInsert): Promise<StagedVacancyUpload>;
 export async function stageUpload(input: StagedFmrInsert): Promise<StagedFmrUpload>;
+export async function stageUpload(input: StagedAcsRentInsert): Promise<StagedAcsRentUpload>;
 export async function stageUpload(input: StagedInsert): Promise<StagedUpload> {
 	const db = assertDb();
 	await reapExpiredStagedUploads();
@@ -185,6 +221,12 @@ export async function consumeStaged(
 	adminTokenHash: string,
 	kind: 'hud_fmr'
 ): Promise<StagedFmrUpload | null>;
+export async function consumeStaged(
+	tx: TxClient,
+	id: string,
+	adminTokenHash: string,
+	kind: 'acs_rent'
+): Promise<StagedAcsRentUpload | null>;
 export async function consumeStaged(
 	tx: TxClient,
 	id: string,
