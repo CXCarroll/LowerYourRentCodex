@@ -102,7 +102,7 @@ function isAcsRentRows(value: unknown): value is AcsRentRowInput[] {
 			(row) =>
 				isRecord(row) &&
 				isInteger(row.year) &&
-				row.geoLevel === 'zcta' &&
+				(row.geoLevel === 'zcta' || row.geoLevel === 'puma') &&
 				typeof row.geoId === 'string' &&
 				isInteger(row.medianGrossRentCents) &&
 				(row.sampleSize === null || isInteger(row.sampleSize))

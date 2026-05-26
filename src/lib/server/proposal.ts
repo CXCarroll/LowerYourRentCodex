@@ -18,6 +18,7 @@ export interface ProposalInput {
 	currentRentCents: number;
 	aptType: AptType;
 	zip: string;
+	pumaGeoId?: string | null;
 	countyFips: string | null;
 	cbsaCode: string | null;
 }
@@ -58,6 +59,7 @@ export function computeProposalFromMarketData({
 		source: dist.source,
 		fmrCents: marketData.fmrCents,
 		acsMedianCents: marketData.acsMedianCents,
+		acsSource: marketData.acsSource,
 		nvrCounteroffer: nvr
 			? {
 					counterofferCents: nvr.counterofferRentCents,
@@ -72,7 +74,8 @@ export function computeProposalFromMarketData({
 export async function computeProposal(input: ProposalInput): Promise<Proposal | null> {
 	const marketData = await loadNegotiationMarketData({
 		zip: input.zip,
-		aptType: input.aptType
+		aptType: input.aptType,
+		pumaGeoId: input.pumaGeoId
 	});
 	if (!marketData) return null;
 	return computeProposalFromMarketData({

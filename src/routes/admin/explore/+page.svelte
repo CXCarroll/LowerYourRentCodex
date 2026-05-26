@@ -55,7 +55,7 @@
 				const labelBits: string[] = [];
 				if (ins.submissionCount > 0) labelBits.push(`${ins.submissionCount} submissions`);
 				if (ins.acsMedianGrossRentCents) {
-					labelBits.push(`ACS ${formatCentsAsDollars(ins.acsMedianGrossRentCents)}`);
+					labelBits.push(`ACS aggregate ${formatCentsAsDollars(ins.acsMedianGrossRentCents)}`);
 				}
 				const label = labelBits.join(' · ') || 'No rent data';
 				const existing = pins.findIndex((p) => p.zip === ins.zip);
@@ -227,7 +227,7 @@
 							</div>
 						</div>
 						<div>
-							<div class="text-xs uppercase tracking-wide text-slate-500">ACS median rent</div>
+							<div class="text-xs uppercase tracking-wide text-slate-500">ACS aggregate rent</div>
 							<div class="text-lg font-medium tabular-nums text-slate-900">
 								{pin.insight.acsMedianGrossRentCents
 									? formatCentsAsDollars(pin.insight.acsMedianGrossRentCents)

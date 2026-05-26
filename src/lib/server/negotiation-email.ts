@@ -10,7 +10,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db/client';
 import { emailTemplates } from '$lib/server/db/schema';
-import { geocodeAddressToZip } from '$lib/server/geocode';
+import { geocodeAddress } from '$lib/server/geocode';
 import { loadNegotiationMarketData } from '$lib/server/negotiation-market-data';
 import { computeProposalFromMarketData } from '$lib/server/proposal';
 import type { AptType } from '$lib/shared/apt-types';
@@ -33,7 +33,7 @@ export const DEFAULT_TEMPLATE_BODY = `Hi [Landlord name],
 
 I hope you're doing well. My lease at {{address}} is up for renewal soon, and I wanted to open a conversation about the renewal rate.
 
-After reviewing local data — including HUD Fair Market Rent figures and the American Community Survey's median rent for comparable {{apt_type}} units in this ZIP — my current rent of {{current_rent}} appears to be about {{pct_above_median}}% {{median_direction}} the neighborhood median of {{median_rent}}.
+After reviewing local data — including HUD Fair Market Rent figures and {{acs_rent_description}} — my current rent of {{current_rent}} appears to be about {{pct_above_median}}% {{median_direction}} the local benchmark of {{median_rent}}.
 
 {{supply_context}}
 
@@ -49,6 +49,8 @@ interface BuildInput {
 	rentCents: number;
 	/** Optional ZIP already resolved by the submission pipeline. */
 	zip?: string;
+	/** Optional PUMA geography already resolved by the submission pipeline. */
+	pumaGeoId?: string | null;
 	/** Optional geography already resolved by the submission pipeline. */
 	countyFips?: string | null;
 	cbsaCode?: string | null;
@@ -62,8 +64,24 @@ function roundTo100(cents: number): number {
 	return Math.round(cents / 100) * 100;
 }
 
+export function acsRentDescriptionForSource(
+	acsSource: 'pums_recent_mover' | 'acs_aggregate' | null
+): string {
+	return acsSource === 'pums_recent_mover'
+		? 'ACS recent-mover market rent for this local area'
+		: 'ACS median gross rent for this ZIP';
+}
+
 export async function buildNegotiationEmail(
-	{ address, aptType, rentCents, zip: resolvedZip, countyFips, cbsaCode }: BuildInput,
+	{
+		address,
+		aptType,
+		rentCents,
+		zip: resolvedZip,
+		pumaGeoId: resolvedPumaGeoId,
+		countyFips,
+		cbsaCode
+	}: BuildInput,
 	fetchFn: typeof fetch
 ): Promise<{ versions: NegotiationVersion[] }> {
 	// ── 1. Rent-derived figures (always available, never throw) ──────────────
@@ -75,6 +93,8 @@ export async function buildNegotiationEmail(
 
 	// ── 2. Resolve location + market data (best-effort) ──────────────────────
 	let zip: string | null = resolvedZip ?? null;
+	let pumaGeoId: string | null = resolvedPumaGeoId ?? null;
+	let acsSource: 'pums_recent_mover' | 'acs_aggregate' | null = null;
 	let medianCents = roundTo100(currentCents * 0.91);
 	let vacancyPct = FALLBACK_VACANCY_PCT;
 	let fmrCents = roundTo100(currentCents * 0.95);
@@ -86,12 +106,23 @@ export async function buildNegotiationEmail(
 	let permitsLastYear: number | null = null;
 
 	try {
-		zip = zip ?? (await geocodeAddressToZip(address, fetchFn));
+		if (!zip) {
+			const geocoded = await geocodeAddress(address, fetchFn);
+			zip = zip ?? geocoded.zip;
+			pumaGeoId = pumaGeoId ?? geocoded.pumaGeoId;
+		}
 		if (zip) {
-			const marketData = await loadNegotiationMarketData({ zip, aptType, countyFips, cbsaCode });
+			const marketData = await loadNegotiationMarketData({
+				zip,
+				aptType,
+				pumaGeoId,
+				countyFips,
+				cbsaCode
+			});
 			if (marketData) {
 				if (marketData.acsMedianCents != null) {
 					medianCents = marketData.acsMedianCents;
+					acsSource = marketData.acsSource;
 				}
 				if (marketData.latestVacancyPct != null) {
 					vacancyPct = marketData.latestVacancyPct;
@@ -138,6 +169,7 @@ export async function buildNegotiationEmail(
 		zip: zip ?? '',
 		current_rent: formatDollars(currentCents),
 		median_rent: formatDollars(medianCents),
+		acs_rent_description: acsRentDescriptionForSource(acsSource),
 		pct_above_median: String(pctAboveMedian),
 		median_direction: medianDirection,
 		vacancy_rate: vacancyPct.toFixed(1),

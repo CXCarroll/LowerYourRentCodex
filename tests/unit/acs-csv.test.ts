@@ -20,6 +20,21 @@ describe('parseAcsRentCsv', () => {
 		]);
 	});
 
+	test('accepts a valid PUMA recent-mover file', () => {
+		const csv = HEADER + '2024,puma,1200500,245000,86\n';
+		const r = parseAcsRentCsv(csv);
+		expect(r.ok).toBe(true);
+		expect(r.validRows).toEqual([
+			{
+				year: 2024,
+				geoLevel: 'puma',
+				geoId: '1200500',
+				medianGrossRentCents: 245000,
+				sampleSize: 86
+			}
+		]);
+	});
+
 	test('strips BOM and zero-pads short ZCTA ids', () => {
 		const r = parseAcsRentCsv('\uFEFF' + HEADER + '2024,zcta,9021,250000,\n');
 		expect(r.ok).toBe(true);
@@ -34,7 +49,7 @@ describe('parseAcsRentCsv', () => {
 		expect(r.errors[0].message).toMatch(/missing/);
 	});
 
-	test('rejects non-ZCTA geo levels for launch imports', () => {
+	test('rejects unknown geo levels', () => {
 		const r = parseAcsRentCsv(HEADER + '2024,county,36047,290000,12500\n');
 		expect(r.ok).toBe(false);
 		expect(r.errors[0].message).toMatch(/geo_level/);
@@ -42,6 +57,12 @@ describe('parseAcsRentCsv', () => {
 
 	test('rejects invalid ZCTA ids', () => {
 		const r = parseAcsRentCsv(HEADER + '2024,zcta,abc,290000,12500\n');
+		expect(r.ok).toBe(false);
+		expect(r.errors[0].message).toMatch(/geo_id/);
+	});
+
+	test('rejects invalid PUMA ids', () => {
+		const r = parseAcsRentCsv(HEADER + '2024,puma,00500,290000,12500\n');
 		expect(r.ok).toBe(false);
 		expect(r.errors[0].message).toMatch(/geo_id/);
 	});

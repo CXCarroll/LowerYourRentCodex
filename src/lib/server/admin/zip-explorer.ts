@@ -1,5 +1,5 @@
 // Read-only ZIP insights for the admin Explore page.
-// Aggregates user submissions, ACS median rent, HUD FMR by apt type,
+// Aggregates user submissions, ACS aggregate median rent, HUD FMR by apt type,
 // and the latest CBSA vacancy rate. All queries are indexed.
 
 import { and, eq, desc, gt, sql } from 'drizzle-orm';
@@ -33,6 +33,7 @@ export interface ZipInsight {
 	submissionCount: number;
 	medianRentCentsByAptType: Record<AptType, number | null>;
 	acsMedianGrossRentCents: number | null;
+	acsSource: 'acs_aggregate' | null;
 	hudFmrCentsByAptType: Record<AptType, number | null>;
 	/** Full per-year FMR series for the county, sorted by year ascending. */
 	hudFmrHistoryByAptType: Record<AptType, Array<{ year: number; cents: number }>>;
@@ -185,6 +186,7 @@ export async function getZipInsight(zip: string): Promise<ZipInsight | null> {
 	// Latest ACS median for the ZCTA.
 	const acsRows = await acsRowsPromise;
 	const acsMedianGrossRentCents = acsRows[0]?.median ?? null;
+	const acsSource = acsRows.length > 0 ? 'acs_aggregate' : null;
 
 	// Full HUD FMR history for this county, one query for all apt types + years.
 	const hudFmrCentsByAptType = Object.fromEntries(
@@ -366,6 +368,7 @@ export async function getZipInsight(zip: string): Promise<ZipInsight | null> {
 		submissionCount,
 		medianRentCentsByAptType,
 		acsMedianGrossRentCents,
+		acsSource,
 		hudFmrCentsByAptType,
 		hudFmrHistoryByAptType,
 		latestVacancyPct,

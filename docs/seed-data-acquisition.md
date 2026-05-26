@@ -10,22 +10,26 @@ initial seeding.
 
 ## Sources
 
-- ACS median rent: Census ACS 5-year table `B25064_001E` and housing units `B25001_001E`.
-  Use official Census/data.census.gov exports.
+- ACS aggregate median rent fallback: Census ACS 5-year table `B25064_001E` and housing
+  units `B25001_001E`, by ZCTA. Use official Census/data.census.gov exports.
+- ACS PUMS recent-mover rent: ACS 5-year PUMS housing records, filtered to renter
+  households that moved in within the last 12 months, by state+PUMA.
 - HUD FMR: HUD USER Fair Market Rent files.
 - Vacancy: Census Housing Vacancy Survey rental vacancy rates.
 - Do not use mirrors or commercial sources for v1 unless the source policy changes.
 
 ## Workflow
 
-1. Seed ACS with the API-key job, or download raw official ACS files and upload CSV manually.
-2. Download raw official HUD FMR and vacancy files from a normal browser.
-3. Save each raw file with a sidecar manifest containing source URL, download date, data year,
+1. Seed ACS aggregate ZCTA rent with the API-key job, or download raw official ACS files and
+   upload CSV manually.
+2. Transform and upload ACS PUMS recent-mover PUMA rent where sample sizes clear the threshold.
+3. Download raw official HUD FMR and vacancy files from a normal browser.
+4. Save each raw file with a sidecar manifest containing source URL, download date, data year,
    checksum, and operator notes.
-4. Transform raw files into normalized CSVs.
-5. Upload through `/admin/upload/acs`, `/admin/upload/fmr`, and `/admin/upload/vacancy`.
-6. Review dry-run row counts, inserts, updates, errors, warnings, and sample rows before commit.
-7. Spot-check `/admin/explore` for launch ZIPs and confirm ACS, FMR, and vacancy data appear.
+5. Transform raw files into normalized CSVs.
+6. Upload through `/admin/upload/acs`, `/admin/upload/fmr`, and `/admin/upload/vacancy`.
+7. Review dry-run row counts, inserts, updates, errors, warnings, and sample rows before commit.
+8. Spot-check `/admin/explore` for launch ZIPs and confirm ACS, FMR, and vacancy data appear.
 
 ## ACS API-Key Seed
 
@@ -72,6 +76,25 @@ Upload CSV shape:
 ```csv
 year,geo_level,geo_id,median_gross_rent_cents,sample_size
 2024,zcta,11201,290000,12500
+```
+
+## ACS PUMS Recent-Mover Upload
+
+Use this to add preferred market-rent estimates where ACS PUMS has enough recent-mover
+coverage. The output rows share the `acs_rent` upload shape but use `geo_level=puma` and
+`geo_id=<state_fips><puma>`.
+
+```sh
+bun run transform:acs:pums raw-pums-h.csv output/acs-pums-recent-mover.csv --year=2024 --source-url=https://api.census.gov/...
+```
+
+The transform filters to `TEN=3`, `MV=1`, positive `GRNTP`, and positive `WGTP`, adjusts rent
+with `ADJHSG`, computes weighted median gross rent by state+PUMA, and omits PUMAs with fewer
+than 30 qualifying unweighted records by default.
+
+```csv
+year,geo_level,geo_id,median_gross_rent_cents,sample_size
+2024,puma,1200500,245000,86
 ```
 
 ## HUD FMR Upload Shape

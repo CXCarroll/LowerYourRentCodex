@@ -18,7 +18,12 @@ const consumeVerifiedCodeTx = mock(async () => {
 	return verifyResult;
 });
 const verifyAddressExists = mock(async () => true);
-const geocodeAddressToZip = mock(async (): Promise<string | null> => '11201');
+const geocodeAddress = mock(
+	async (): Promise<{ zip: string | null; pumaGeoId: string | null }> => ({
+		zip: '11201',
+		pumaGeoId: '3604001'
+	})
+);
 const lookupZip = mock(
 	async (
 		zip: string
@@ -60,7 +65,7 @@ const POST = _createVerifyCheckPost({
 		addressHash: 'address-hash',
 		unitHash: address.includes('Apt 4B') ? 'unit-hash' : null
 	}),
-	geocodeAddressToZip,
+	geocodeAddress,
 	lookupZip,
 	insertSubmissionUnlessRecentDuplicateTx,
 	db: { transaction } as unknown as NonNullable<Parameters<typeof _createVerifyCheckPost>[0]['db']>,
@@ -102,7 +107,7 @@ beforeEach(() => {
 	transaction.mockClear();
 	consumeVerifiedCodeTx.mockClear();
 	verifyAddressExists.mockClear();
-	geocodeAddressToZip.mockClear();
+	geocodeAddress.mockClear();
 	lookupZip.mockClear();
 	insertSubmissionUnlessRecentDuplicateTx.mockClear();
 	buildNegotiationEmail.mockClear();
@@ -123,7 +128,7 @@ describe('/api/verify/check', () => {
 		expect(serverTiming).toContain('negotiation_email_generation;dur=');
 		expect(serverTiming).toContain('otp_transaction;dur=');
 		expect(serverTiming).toContain('response_serialization;dur=');
-		expect(geocodeAddressToZip).toHaveBeenCalled();
+		expect(geocodeAddress).toHaveBeenCalled();
 
 		expect(timingLog).toHaveBeenCalledTimes(1);
 		const entry = JSON.parse(String(timingLog.mock.calls[0][0])) as {
@@ -197,7 +202,7 @@ describe('/api/verify/check', () => {
 	});
 
 	test('rejects unresolved ZIPs before consuming the code', async () => {
-		geocodeAddressToZip.mockImplementationOnce(async () => null);
+		geocodeAddress.mockImplementationOnce(async () => ({ zip: null, pumaGeoId: null }));
 
 		const res = await post(validPayload({ address: '123 Main St Apt 4B, Brooklyn, NY' }));
 		const body = await res.json();
@@ -259,6 +264,7 @@ describe('/api/verify/check', () => {
 		expect(buildNegotiationEmail).toHaveBeenCalledWith(
 			expect.objectContaining({
 				zip: '11201',
+				pumaGeoId: '3604001',
 				countyFips: '36047',
 				cbsaCode: '35620'
 			}),

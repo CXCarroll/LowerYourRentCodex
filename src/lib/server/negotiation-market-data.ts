@@ -12,10 +12,12 @@ import type { AptType } from '$lib/shared/apt-types';
 
 export interface NegotiationMarketData {
 	zip: string;
+	pumaGeoId: string | null;
 	countyFips: string | null;
 	cbsaCode: string | null;
 	userComps: number[];
 	acsMedianCents: number | null;
+	acsSource: 'pums_recent_mover' | 'acs_aggregate' | null;
 	fmrCents: number | null;
 	latestVacancyPct: number | null;
 	recentPermits5Plus: number | null;
@@ -26,6 +28,7 @@ export interface NegotiationMarketData {
 export interface NegotiationMarketDataInput {
 	zip: string;
 	aptType: AptType;
+	pumaGeoId?: string | null;
 	countyFips?: string | null;
 	cbsaCode?: string | null;
 }
@@ -34,6 +37,22 @@ interface PermitRow {
 	year: number;
 	month: number;
 	units5plus: number;
+}
+
+export function selectPreferredAcsRent({
+	pumaMedianCents,
+	zctaMedianCents
+}: {
+	pumaMedianCents: number | null | undefined;
+	zctaMedianCents: number | null | undefined;
+}): Pick<NegotiationMarketData, 'acsMedianCents' | 'acsSource'> {
+	if (pumaMedianCents != null) {
+		return { acsMedianCents: pumaMedianCents, acsSource: 'pums_recent_mover' };
+	}
+	if (zctaMedianCents != null) {
+		return { acsMedianCents: zctaMedianCents, acsSource: 'acs_aggregate' };
+	}
+	return { acsMedianCents: null, acsSource: null };
 }
 
 function summarizeRecentPermits(rows: PermitRow[]): {
@@ -68,6 +87,7 @@ function summarizeRecentPermits(rows: PermitRow[]): {
 export async function loadNegotiationMarketData({
 	zip,
 	aptType,
+	pumaGeoId = null,
 	countyFips: knownCountyFips,
 	cbsaCode: knownCbsaCode
 }: NegotiationMarketDataInput): Promise<NegotiationMarketData | null> {
@@ -87,7 +107,7 @@ export async function loadNegotiationMarketData({
 		cbsaCode = zcRows[0].cbsaCode;
 	}
 
-	const [userRows, acsRows, fmrRows, vacancyRows, permitRows] = await Promise.all([
+	const [userRows, pumaAcsRows, zctaAcsRows, fmrRows, vacancyRows, permitRows] = await Promise.all([
 		db
 			.select({ rentCents: submissions.rentCents })
 			.from(submissions)
@@ -98,6 +118,14 @@ export async function loadNegotiationMarketData({
 					gt(submissions.createdAt, sql`now() - interval '365 days'`)
 				)
 			),
+		pumaGeoId && /^\d{7}$/.test(pumaGeoId)
+			? db
+					.select({ median: acsRent.medianGrossRentCents })
+					.from(acsRent)
+					.where(and(eq(acsRent.geoLevel, 'puma'), eq(acsRent.geoId, pumaGeoId)))
+					.orderBy(desc(acsRent.year))
+					.limit(1)
+			: Promise.resolve([]),
 		db
 			.select({ median: acsRent.medianGrossRentCents })
 			.from(acsRent)
@@ -143,12 +171,18 @@ export async function loadNegotiationMarketData({
 	]);
 
 	const permits = summarizeRecentPermits(permitRows);
+	const { acsMedianCents, acsSource } = selectPreferredAcsRent({
+		pumaMedianCents: pumaAcsRows[0]?.median,
+		zctaMedianCents: zctaAcsRows[0]?.median
+	});
 	return {
 		zip,
+		pumaGeoId,
 		countyFips,
 		cbsaCode,
 		userComps: userRows.map((row) => row.rentCents),
-		acsMedianCents: acsRows[0]?.median ?? null,
+		acsMedianCents,
+		acsSource,
 		fmrCents: fmrRows[0]?.fmrCents ?? null,
 		latestVacancyPct: vacancyRows.length > 0 ? Number(vacancyRows[0].pct) : null,
 		recentPermits5Plus: permits.units5yr,

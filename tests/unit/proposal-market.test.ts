@@ -5,14 +5,17 @@ mock.module('$env/dynamic/public', () => ({ env: process.env }));
 mock.module('$app/environment', () => ({ building: false }));
 
 const { computeProposalFromMarketData } = await import('../../src/lib/server/proposal');
+const { selectPreferredAcsRent } = await import('../../src/lib/server/negotiation-market-data');
 
 function market(overrides: Record<string, unknown> = {}) {
 	return {
 		zip: '11201',
+		pumaGeoId: null,
 		countyFips: '36047',
 		cbsaCode: '35620',
 		userComps: [],
 		acsMedianCents: null,
+		acsSource: null,
 		fmrCents: null,
 		latestVacancyPct: null,
 		recentPermits5Plus: null,
@@ -64,6 +67,7 @@ describe('computeProposalFromMarketData', () => {
 		expect(proposal?.source).toBe('fmr_fallback');
 		expect(proposal?.fmrCents).toBe(240_000);
 		expect(proposal?.acsMedianCents).toBeNull();
+		expect(proposal?.acsSource).toBeNull();
 	});
 
 	test('returns null when no market data can support a proposal', () => {
@@ -73,5 +77,26 @@ describe('computeProposalFromMarketData', () => {
 		});
 
 		expect(proposal).toBeNull();
+	});
+});
+
+describe('selectPreferredAcsRent', () => {
+	test('prefers PUMS recent-mover PUMA rent over aggregate ZCTA rent', () => {
+		expect(
+			selectPreferredAcsRent({ pumaMedianCents: 310_000, zctaMedianCents: 250_000 })
+		).toEqual({ acsMedianCents: 310_000, acsSource: 'pums_recent_mover' });
+	});
+
+	test('falls back to aggregate ZCTA rent when PUMA rent is missing', () => {
+		expect(
+			selectPreferredAcsRent({ pumaMedianCents: null, zctaMedianCents: 250_000 })
+		).toEqual({ acsMedianCents: 250_000, acsSource: 'acs_aggregate' });
+	});
+
+	test('returns nulls when both ACS sources are missing', () => {
+		expect(selectPreferredAcsRent({ pumaMedianCents: null, zctaMedianCents: null })).toEqual({
+			acsMedianCents: null,
+			acsSource: null
+		});
 	});
 });

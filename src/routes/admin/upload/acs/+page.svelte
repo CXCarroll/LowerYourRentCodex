@@ -67,7 +67,8 @@
 			<p class="mt-1 text-sm text-slate-500">
 				CSV with columns:
 				<code>year, geo_level, geo_id, median_gross_rent_cents, sample_size</code>.
-				Use <code>geo_level=zcta</code>. Max 5 MB / 50,000 rows.
+				Use <code>geo_level=zcta</code> for aggregate ACS or <code>geo_level=puma</code> for
+				PUMS recent-mover rent. Max 5 MB / 50,000 rows.
 			</p>
 		</div>
 		<a href="/admin" class="text-sm text-slate-500 hover:underline">← Dashboard</a>
@@ -75,8 +76,9 @@
 
 	<div class="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
 		<p>
-			Production seed uploads should come from official Census ACS files downloaded manually from
-			a browser, then transformed offline. Railway does not need to fetch ACS data directly.
+			Production seed uploads should come from official Census ACS aggregate or PUMS files
+			downloaded manually from a browser, then transformed offline. Railway does not need to fetch
+			ACS data directly.
 		</p>
 	</div>
 

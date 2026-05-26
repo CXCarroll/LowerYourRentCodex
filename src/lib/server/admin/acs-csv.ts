@@ -1,13 +1,13 @@
 // Pure CSV parser + validator for acs_rent uploads.
 // Header: year, geo_level, geo_id, median_gross_rent_cents, sample_size.
-// V1 accepts ZCTA rows only because proposal lookups read geo_level='zcta'.
+// Accepts aggregate ZCTA rows and PUMS recent-mover PUMA rows.
 
 import { parse } from 'csv-parse/sync';
 
 export interface AcsRentRowInput {
 	year: number;
-	geoLevel: 'zcta';
-	geoId: string; // 5-digit ZCTA
+	geoLevel: 'zcta' | 'puma';
+	geoId: string; // 5-digit ZCTA or 7-digit state+PUMA
 	medianGrossRentCents: number;
 	sampleSize: number | null;
 }
@@ -195,22 +195,26 @@ export function parseAcsRentCsv(raw: string | Buffer | Uint8Array): ParseResult 
 		}
 
 		const geoLevel = cells.geo_level.toLowerCase();
-		if (geoLevel !== 'zcta') {
+		if (geoLevel !== 'zcta' && geoLevel !== 'puma') {
 			errors.push({
 				line,
-				message: `geo_level must be zcta for launch imports (got "${cells.geo_level}")`
+				message: `geo_level must be zcta or puma (got "${cells.geo_level}")`
 			});
 			continue;
 		}
 
-		const zctaDigits = cells.geo_id.replace(/\D/g, '');
-		if (zctaDigits.length === 0) {
+		const geoDigits = cells.geo_id.replace(/\D/g, '');
+		if (geoDigits.length === 0) {
 			errors.push({ line, message: 'geo_id is required' });
 			continue;
 		}
-		const geoId = zctaDigits.padStart(5, '0');
-		if (geoId.length !== 5) {
-			errors.push({ line, message: `geo_id must be a 5-digit ZCTA (got "${cells.geo_id}")` });
+		const geoId = geoLevel === 'zcta' ? geoDigits.padStart(5, '0') : geoDigits;
+		const validGeoId =
+			(geoLevel === 'zcta' && geoId.length === 5) ||
+			(geoLevel === 'puma' && /^\d{7}$/.test(geoId));
+		if (!validGeoId) {
+			const label = geoLevel === 'zcta' ? '5-digit ZCTA' : '7-digit state+PUMA id';
+			errors.push({ line, message: `geo_id must be a ${label} (got "${cells.geo_id}")` });
 			continue;
 		}
 
@@ -242,15 +246,15 @@ export function parseAcsRentCsv(raw: string | Buffer | Uint8Array): ParseResult 
 
 		if (year > cy) warnings.push({ line, message: `year ${year} is in the future` });
 
-		const pk = `${year}|zcta|${geoId}`;
+		const pk = `${year}|${geoLevel}|${geoId}`;
 		const prior = seenPk.get(pk);
 		if (prior !== undefined) {
 			warnings.push({
 				line,
-				message: `duplicate of (year=${year}, geo_level=zcta, geo_id=${geoId}) first seen at line ${prior}; later row wins`
+				message: `duplicate of (year=${year}, geo_level=${geoLevel}, geo_id=${geoId}) first seen at line ${prior}; later row wins`
 			});
 			const existingIdx = validRows.findIndex(
-				(v) => v.year === year && v.geoLevel === 'zcta' && v.geoId === geoId
+				(v) => v.year === year && v.geoLevel === geoLevel && v.geoId === geoId
 			);
 			if (existingIdx >= 0) {
 				validRows[existingIdx] = {
@@ -266,7 +270,7 @@ export function parseAcsRentCsv(raw: string | Buffer | Uint8Array): ParseResult 
 		seenPk.set(pk, line);
 		validRows.push({
 			year,
-			geoLevel: 'zcta',
+			geoLevel,
 			geoId,
 			medianGrossRentCents,
 			sampleSize

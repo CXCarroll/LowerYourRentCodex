@@ -12,7 +12,7 @@ import { verifyAddressExists } from '$lib/server/mapbox';
 import { buildNegotiationEmail } from '$lib/server/negotiation-email';
 import { env } from '$lib/server/env';
 import { normalizeBuildingAddress } from '$lib/server/address';
-import { geocodeAddressToZip } from '$lib/server/geocode';
+import { geocodeAddress } from '$lib/server/geocode';
 import { lookupZip } from '$lib/server/geo';
 import { insertSubmissionUnlessRecentDuplicateTx } from '$lib/server/submissions';
 import { db } from '$lib/server/db/client';
@@ -112,7 +112,7 @@ interface VerifyCheckDeps {
 	verifyAddressExists: typeof verifyAddressExists;
 	buildNegotiationEmail: typeof buildNegotiationEmail;
 	normalizeBuildingAddress: typeof normalizeBuildingAddress;
-	geocodeAddressToZip: typeof geocodeAddressToZip;
+	geocodeAddress: typeof geocodeAddress;
 	lookupZip: typeof lookupZip;
 	insertSubmissionUnlessRecentDuplicateTx: typeof insertSubmissionUnlessRecentDuplicateTx;
 	db: VerifyCheckDb | null;
@@ -221,10 +221,11 @@ export function _createVerifyCheckPost(deps: VerifyCheckDeps): RequestHandler {
 		);
 	}
 
-	const { normalized, zip } = await timings.time('geocode', async () => {
+	const { normalized, zip, pumaGeoId } = await timings.time('geocode', async () => {
 		const normalized = deps.normalizeBuildingAddress(submission.address);
-		const zip = normalized.zip ?? (await deps.geocodeAddressToZip(submission.address, fetch));
-		return { normalized, zip };
+		const geocoded = await deps.geocodeAddress(submission.address, fetch);
+		const zip = normalized.zip ?? geocoded.zip;
+		return { normalized, zip, pumaGeoId: geocoded.pumaGeoId };
 	});
 	if (!normalized.building || !zip) {
 		return respond({ versions: [], error: 'missing_zip' }, { status: 422, headers: noStore });
@@ -251,15 +252,16 @@ export function _createVerifyCheckPost(deps: VerifyCheckDeps): RequestHandler {
 		({ versions } = await timings.time('negotiation_email_generation', () =>
 			deps.buildNegotiationEmail(
 				{
-						address: normalized.building,
-						aptType: submission.aptType,
-						rentCents: submission.rentCents,
-						zip: zipInfo.zip,
-						countyFips: zipInfo.countyFips,
-						cbsaCode: zipInfo.cbsaCode
-					},
-					fetch
-				)
+					address: normalized.building,
+					aptType: submission.aptType,
+					rentCents: submission.rentCents,
+					zip: zipInfo.zip,
+					pumaGeoId,
+					countyFips: zipInfo.countyFips,
+					cbsaCode: zipInfo.cbsaCode
+				},
+				fetch
+			)
 		));
 	} catch {
 		return respond(
@@ -320,7 +322,7 @@ export const POST = _createVerifyCheckPost({
 	verifyAddressExists,
 	buildNegotiationEmail,
 	normalizeBuildingAddress,
-	geocodeAddressToZip,
+	geocodeAddress,
 	lookupZip,
 	insertSubmissionUnlessRecentDuplicateTx,
 	db,

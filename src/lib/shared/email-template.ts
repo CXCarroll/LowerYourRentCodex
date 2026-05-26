@@ -61,8 +61,15 @@ export const VARIABLE_CATALOG: TemplateVariable[] = [
 	{
 		key: 'median_rent',
 		label: 'Median rent',
-		description: 'ACS median gross rent for the ZIP.',
+		description: 'Local ACS rent benchmark used by the proposal.',
 		sample: '$2,275'
+	},
+	{
+		key: 'acs_rent_description',
+		label: 'ACS rent description',
+		description:
+			'Source-aware text describing whether the ACS benchmark is PUMS recent-mover or aggregate ZCTA rent.',
+		sample: 'ACS recent-mover market rent for this local area'
 	},
 	{
 		key: 'pct_above_median',

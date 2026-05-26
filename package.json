@@ -25,6 +25,7 @@
 		"seed:templates": "bun run scripts/seed-email-templates.ts",
 		"seed:all": "bun run scripts/seed-all.ts",
 		"transform:acs": "bun run scripts/transform-acs-rent.ts",
+		"transform:acs:pums": "bun run scripts/transform-acs-pums-recent-mover-rent.ts",
 		"admin:password": "bun run scripts/admin-set-password.ts",
 		"cost:estimate": "bun run scripts/estimate-railway-cost.ts",
 		"test": "bun test",
