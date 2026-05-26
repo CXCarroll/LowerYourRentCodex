@@ -11,10 +11,15 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { parse } from 'csv-parse/sync';
-import { transformPumsRecentMoverRent } from './pums-recent-mover-rent-lib';
+import { parse } from 'csv-parse';
+import {
+	addPumsRecentMoverRecord,
+	createPumsRecentMoverAccumulator,
+	finalizePumsRecentMoverRent,
+	type RawRecord
+} from './pums-recent-mover-rent-lib';
 
 interface Args {
 	inputPath: string;
@@ -24,8 +29,6 @@ interface Args {
 	sourceUrl: string | null;
 	notes: string | null;
 }
-
-type RawRecord = Record<string, string>;
 
 function usage(): never {
 	throw new Error(
@@ -79,20 +82,48 @@ function toLine(cells: Array<string | number>): string {
 	return cells.map(csvEscape).join(',');
 }
 
-const args = parseArgs(process.argv.slice(2));
-const rawBytes = readFileSync(args.inputPath);
-const rawSha256 = createHash('sha256').update(rawBytes).digest('hex');
-const rawText = rawBytes.toString('utf8').replace(/^\uFEFF/, '');
-const records = parse(rawText, {
-	columns: true,
-	skip_empty_lines: true,
-	trim: true
-}) as RawRecord[];
+async function sha256File(path: string): Promise<string> {
+	const hash = createHash('sha256');
+	await new Promise<void>((resolve, reject) => {
+		createReadStream(path)
+			.on('data', (chunk) => hash.update(chunk))
+			.on('error', reject)
+			.on('end', resolve);
+	});
+	return hash.digest('hex');
+}
 
-const result = transformPumsRecentMoverRent(records, {
-	year: args.year,
-	minSampleSize: args.minSampleSize
-});
+async function transformFile(args: Args) {
+	const rawSha256 = await sha256File(args.inputPath);
+	const accumulator = createPumsRecentMoverAccumulator({
+		year: args.year,
+		minSampleSize: args.minSampleSize
+	});
+
+	const parser = createReadStream(args.inputPath).pipe(
+		parse({
+			bom: true,
+			columns: true,
+			skip_empty_lines: true,
+			trim: true
+		})
+	);
+
+	for await (const record of parser) {
+		addPumsRecentMoverRecord(accumulator, record as RawRecord);
+		if (accumulator.stats.inputRows % 250_000 === 0) {
+			// eslint-disable-next-line no-console
+			console.log(
+				`Processed ${accumulator.stats.inputRows.toLocaleString('en-US')} rows; ${accumulator.stats.qualifiedRows.toLocaleString('en-US')} qualified recent-renter movers`
+			);
+		}
+	}
+
+	return { rawSha256, result: finalizePumsRecentMoverRent(accumulator) };
+}
+
+const args = parseArgs(process.argv.slice(2));
+const { rawSha256, result } = await transformFile(args);
 
 const output = [toLine(['year', 'geo_level', 'geo_id', 'median_gross_rent_cents', 'sample_size'])];
 for (const row of result.rows) {

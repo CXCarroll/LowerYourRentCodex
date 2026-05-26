@@ -26,7 +26,7 @@ export interface PumsTransformResult extends PumsTransformStats {
 	rows: PumsRecentMoverRow[];
 }
 
-type RawRecord = Record<string, string | number | null | undefined>;
+export type RawRecord = Record<string, string | number | null | undefined>;
 
 interface WeightedRent {
 	cents: number;
@@ -35,11 +35,23 @@ interface WeightedRent {
 
 const DEFAULT_MIN_SAMPLE_SIZE = 30;
 
+export interface PumsRecentMoverAccumulator {
+	minSampleSize: number;
+	year: number;
+	groups: Map<string, WeightedRent[]>;
+	stats: PumsTransformStats;
+}
+
 function getField(record: RawRecord, names: string[]): string {
-	const lower = new Map(Object.entries(record).map(([k, v]) => [k.trim().toUpperCase(), v]));
 	for (const name of names) {
-		const value = lower.get(name);
+		const value = record[name] ?? record[name.toLowerCase()];
 		if (value !== undefined && value !== null) return String(value).trim();
+	}
+	const upperNames = new Set(names.map((name) => name.toUpperCase()));
+	for (const [key, value] of Object.entries(record)) {
+		if (upperNames.has(key.trim().toUpperCase()) && value !== undefined && value !== null) {
+			return String(value).trim();
+		}
 	}
 	return '';
 }
@@ -75,80 +87,104 @@ export function weightedMedianCents(values: WeightedRent[]): number | null {
 	return sorted[sorted.length - 1].cents;
 }
 
-export function transformPumsRecentMoverRent(
-	records: RawRecord[],
+export function createPumsRecentMoverAccumulator(
 	options: PumsTransformOptions
-): PumsTransformResult {
+): PumsRecentMoverAccumulator {
 	const minSampleSize = options.minSampleSize ?? DEFAULT_MIN_SAMPLE_SIZE;
-	const groups = new Map<string, WeightedRent[]>();
+	return {
+		minSampleSize,
+		year: options.year,
+		groups: new Map<string, WeightedRent[]>(),
+		stats: {
+			inputRows: 0,
+			qualifiedRows: 0,
+			outputRows: 0,
+			skippedInvalidGeoRows: 0,
+			skippedNotRecentRenterRows: 0,
+			skippedInvalidRentRows: 0,
+			skippedInvalidWeightRows: 0,
+			skippedBelowSampleThresholdGroups: 0
+		}
+	};
+}
+
+export function addPumsRecentMoverRecord(
+	accumulator: PumsRecentMoverAccumulator,
+	record: RawRecord
+): void {
+	const { groups, stats } = accumulator;
+	stats.inputRows += 1;
+
+	const geoId = pumaGeoId(record);
+	if (!geoId) {
+		stats.skippedInvalidGeoRows += 1;
+		return;
+	}
+
+	const tenure = numberField(record, ['TEN']);
+	const movedIn = numberField(record, ['MV']);
+	if (tenure !== 3 || movedIn !== 1) {
+		stats.skippedNotRecentRenterRows += 1;
+		return;
+	}
+
+	const rentDollars = numberField(record, ['GRNTP']);
+	const adjustment = numberField(record, ['ADJHSG']);
+	if (
+		rentDollars === null ||
+		adjustment === null ||
+		rentDollars <= 0 ||
+		adjustment <= 0
+	) {
+		stats.skippedInvalidRentRows += 1;
+		return;
+	}
+
+	const weight = numberField(record, ['WGTP']);
+	if (weight === null || weight <= 0) {
+		stats.skippedInvalidWeightRows += 1;
+		return;
+	}
+
+	const adjustedRentDollars = (rentDollars * adjustment) / 1_000_000;
+	const cents = Math.round(adjustedRentDollars * 100);
+	if (!Number.isFinite(cents) || cents <= 0) {
+		stats.skippedInvalidRentRows += 1;
+		return;
+	}
+
+	const group = groups.get(geoId) ?? [];
+	group.push({ cents, weight });
+	groups.set(geoId, group);
+	stats.qualifiedRows += 1;
+}
+
+export function finalizePumsRecentMoverRent(
+	accumulator: PumsRecentMoverAccumulator
+): PumsTransformResult {
 	const stats: PumsTransformStats = {
-		inputRows: records.length,
-		qualifiedRows: 0,
+		inputRows: accumulator.stats.inputRows,
+		qualifiedRows: accumulator.stats.qualifiedRows,
 		outputRows: 0,
-		skippedInvalidGeoRows: 0,
-		skippedNotRecentRenterRows: 0,
-		skippedInvalidRentRows: 0,
-		skippedInvalidWeightRows: 0,
+		skippedInvalidGeoRows: accumulator.stats.skippedInvalidGeoRows,
+		skippedNotRecentRenterRows: accumulator.stats.skippedNotRecentRenterRows,
+		skippedInvalidRentRows: accumulator.stats.skippedInvalidRentRows,
+		skippedInvalidWeightRows: accumulator.stats.skippedInvalidWeightRows,
 		skippedBelowSampleThresholdGroups: 0
 	};
 
-	for (const record of records) {
-		const geoId = pumaGeoId(record);
-		if (!geoId) {
-			stats.skippedInvalidGeoRows += 1;
-			continue;
-		}
-
-		const tenure = numberField(record, ['TEN']);
-		const movedIn = numberField(record, ['MV']);
-		if (tenure !== 3 || movedIn !== 1) {
-			stats.skippedNotRecentRenterRows += 1;
-			continue;
-		}
-
-		const rentDollars = numberField(record, ['GRNTP']);
-		const adjustment = numberField(record, ['ADJHSG']);
-		if (
-			rentDollars === null ||
-			adjustment === null ||
-			rentDollars <= 0 ||
-			adjustment <= 0
-		) {
-			stats.skippedInvalidRentRows += 1;
-			continue;
-		}
-
-		const weight = numberField(record, ['WGTP']);
-		if (weight === null || weight <= 0) {
-			stats.skippedInvalidWeightRows += 1;
-			continue;
-		}
-
-		const adjustedRentDollars = (rentDollars * adjustment) / 1_000_000;
-		const cents = Math.round(adjustedRentDollars * 100);
-		if (!Number.isFinite(cents) || cents <= 0) {
-			stats.skippedInvalidRentRows += 1;
-			continue;
-		}
-
-		const group = groups.get(geoId) ?? [];
-		group.push({ cents, weight });
-		groups.set(geoId, group);
-		stats.qualifiedRows += 1;
-	}
-
 	const rows: PumsRecentMoverRow[] = [];
-	for (const [geoId, values] of Array.from(groups.entries()).sort((a, b) =>
+	for (const [geoId, values] of Array.from(accumulator.groups.entries()).sort((a, b) =>
 		a[0].localeCompare(b[0])
 	)) {
-		if (values.length < minSampleSize) {
+		if (values.length < accumulator.minSampleSize) {
 			stats.skippedBelowSampleThresholdGroups += 1;
 			continue;
 		}
 		const medianGrossRentCents = weightedMedianCents(values);
 		if (medianGrossRentCents === null) continue;
 		rows.push({
-			year: options.year,
+			year: accumulator.year,
 			geoLevel: 'puma',
 			geoId,
 			medianGrossRentCents,
@@ -158,4 +194,15 @@ export function transformPumsRecentMoverRent(
 
 	stats.outputRows = rows.length;
 	return { ...stats, rows };
+}
+
+export function transformPumsRecentMoverRent(
+	records: RawRecord[],
+	options: PumsTransformOptions
+): PumsTransformResult {
+	const accumulator = createPumsRecentMoverAccumulator(options);
+	for (const record of records) {
+		addPumsRecentMoverRecord(accumulator, record);
+	}
+	return finalizePumsRecentMoverRent(accumulator);
 }
